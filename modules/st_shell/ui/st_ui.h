@@ -1,3 +1,6 @@
 #pragma once
 
-// Aggregator for the ui layer. Add headers below.
+#include "Knob.h"
+#include "Controls.h"
+#include "Meters.h"
+#include "EditorBase.h"

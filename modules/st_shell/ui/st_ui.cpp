@@ -1,1 +1,4 @@
-// Aggregator for the ui layer. Add .cpp includes below.
+#include "Knob.cpp"
+#include "Controls.cpp"
+#include "Meters.cpp"
+#include "EditorBase.cpp"

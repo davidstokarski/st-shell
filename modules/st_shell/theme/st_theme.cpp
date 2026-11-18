@@ -1,1 +1,2 @@
-// Aggregator for the theme layer. Add .cpp includes below.
+#include "Theme.cpp"
+#include "LookAndFeel.cpp"
