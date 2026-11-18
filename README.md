@@ -1,26 +1,38 @@
 # ST Shell
 
-Shared foundation for ST audio plugins (JUCE 9, C++20, VST3 + AU on macOS).
-Everything a new plugin needs to look, feel and behave like the rest of the family.
+Shared foundation for the ST family of audio plugins (JUCE 9, C++20, VST3 + AU on macOS): DSP building blocks,
+modulation, presets/state, and the design language that makes every ST plugin look and feel the same.
+
+Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). **Agents: start with [CLAUDE.md](CLAUDE.md).**
+
+## Docs
+
+- [CLAUDE.md](CLAUDE.md) — rules and orientation for anyone (human or agent) building on the shell
+- [docs/DESIGN.md](docs/DESIGN.md) — the visual and interaction language
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module layers, processor/editor patterns, threading, state
+- [docs/COMPONENTS.md](docs/COMPONENTS.md) — catalogue of components, painting helpers and DSP classes
+- [docs/NEW_PLUGIN.md](docs/NEW_PLUGIN.md) — checklist for a new plugin
+- [docs/QUALITY.md](docs/QUALITY.md) — verification bar (tests, snapshots, auval, UI performance)
+- [docs/EXAMPLES.md](docs/EXAMPLES.md) — where each pattern lives in ST Sat
+- [docs/RELEASING.md](docs/RELEASING.md) — universal builds and GitHub release downloads
 
 ## What's inside (`modules/st_shell`, namespace `st`)
 
 | Layer | Contents |
 |---|---|
-| `core/` | Parameter builders & formatters (`st::params`), lock-free `MeterSource`, `AnalyzerSource` + `SpectrumAnalyzer` |
-| `dsp/` | Biquad / TPT SVF / tilt / one-pole / DC filters, phase-coherent Linkwitz-Riley `Crossover` (1–8 bands, 12/24/48 dB/oct), `UpDownCompressor` (OTT-style upward + downward), `Oversampler` (1–16x, switchable without allocation), `DelayLine`, `EnvelopeFollower`, smoothing & utils (`st::dsp`) |
-| `mod/` | `st::mod::ModMatrix`: LFOs (tempo sync), envelope followers, macros, drag-and-drop routings stored in the preset state |
-| `state/` | `ProcessorBase` (APVTS + undo, presets, A/B, meters, analysers, session UI state), `PresetManager`, `ABCompare` |
-| `theme/` | `Theme` design tokens, embedded Inter typeface, `LookAndFeel`, vector icon set, painting helpers |
-| `ui/` | `EditorBase` (uniform scaling, header, tooltips, undo shortcuts), `HeaderBar` (presets, undo/redo, A/B, settings), `Knob`, `ToggleChip`, `Segmented`, `Dropdown`, `NumberBox`, `IconButton`, `PillButton`, `LevelMeter`, `GainChangeMeter`, `TextPrompt`, modulation panel |
+| `core/` | parameter builders & formatters, meter + analyser feeds, FFT spectrum analyser |
+| `dsp/` | filters, phase-coherent crossover, upward/downward compressor, oversampler, delay, envelope follower, 8-type reverb |
+| `mod/` | modulation matrix: tempo-synced LFOs, envelope followers, macros, routings saved in presets |
+| `state/` | `ProcessorBase` (APVTS + undo, presets, A/B, meters, analysers, UI state), preset manager |
+| `theme/` | colour tokens, Inter typeface, icons, painting helpers (knob discs, pill handles, faded lines, trays...), LookAndFeel |
+| `ui/` | scaled `EditorBase` + header, knobs (ringed rims, modulation arcs), faders, buttons, dropdowns, meters, popovers, modulation strip/trails, native macOS menus, animation helpers |
 
-## Using it in a plugin
+## Quick start
 
 ```cmake
 cmake_minimum_required(VERSION 3.24)
-project(MyPlugin VERSION 1.0.0)
+project(STThing VERSION 1.0.0)
 
-# Use a sibling checkout (../st-shell) if present, otherwise fetch the repo.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../st-shell/CMakeLists.txt")
     add_subdirectory(../st-shell st-shell)
 else()
@@ -29,31 +41,23 @@ else()
     FetchContent_MakeAvailable(st_shell)
 endif()
 
-st_add_plugin(MyPlugin
-    PRODUCT_NAME "ST Thing"
-    PLUGIN_CODE  Stth          # unique 4-char code per plugin
-    VERSION      ${PROJECT_VERSION}
-    SOURCES      Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+st_add_plugin(STThing PRODUCT_NAME "ST Thing" PLUGIN_CODE Stth VERSION ${PROJECT_VERSION}
+              SOURCES Source/PluginProcessor.cpp Source/PluginEditor.cpp)
 ```
 
-JUCE is taken from `../.st-deps/JUCE-9.0.5` when present (shared by all plugins), else
-`-DST_JUCE_DIR=...`, else fetched automatically.
+Or copy [`examples/MinimalPlugin`](examples/MinimalPlugin): a complete plugin (processor, editor with ringed knob,
+popover and footer tray) in ~200 lines.
 
-Processor: derive from `st::ProcessorBase`, call `prepareShell (sampleRate)` in `prepareToPlay`,
-push to `inputMeter` / `outputMeter` / `preAnalyzer` / `postAnalyzer` in `processBlock`.
-Editor: derive from `st::EditorBase (processor, designWidth, designHeight)`, add children to
-`getContent()` and lay them out in `layout (body)`.
-
-Conventions:
-- Everything that belongs in a preset lives in `apvts.state`; editor-only state goes in `uiState`.
-- Use `st::Theme::get()` tokens and `st::fonts::` — no hard-coded colours or fonts in plugins.
-- Per-plugin identity = `Theme::accent` / `accent2` + the series palette.
+JUCE is taken from `../.st-deps/JUCE-9.0.5` when present, else `-DST_JUCE_DIR=...`, else fetched.
 
 ## Tests
 
 ```bash
 cmake -S . -B build-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DST_SHELL_BUILD_TESTS=ON
-cmake --build build-tests && ./build-tests/tests/st_dsp_tests_artefacts/Release/st_dsp_tests
+cmake --build build-tests
+./build-tests/tests/st_dsp_tests_artefacts/Release/st_dsp_tests
+./build-tests/tests/StModTests_artefacts/Release/StModTests
+./build-tests/tests/StReverbTests_artefacts/Release/StReverbTests --quick
 ```
 
 Inter typeface © The Inter Project Authors, SIL Open Font License (see `resources/fonts`).
