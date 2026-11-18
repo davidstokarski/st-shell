@@ -4,3 +4,5 @@
 #include "EditorBase.cpp"
 #include "ModulationPanel.cpp"
 #include "ModulationBinder.cpp"
+#include "ModulationStrip.cpp"
+#include "ModulationTrails.cpp"

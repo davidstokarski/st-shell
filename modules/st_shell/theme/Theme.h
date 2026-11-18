@@ -11,39 +11,50 @@ namespace st
 */
 struct Theme
 {
-    // Surfaces (darkest -> lightest)
-    juce::Colour bg0        { 0xff08090c };   // window backdrop
-    juce::Colour bg1        { 0xff0e1014 };   // main panels
-    juce::Colour bg2        { 0xff14171d };   // raised panels
-    juce::Colour bg3        { 0xff1b1f27 };   // controls / wells
-    juce::Colour bg4        { 0xff242933 };   // hover
-    juce::Colour stroke     { 0xff262b35 };   // hairlines
-    juce::Colour strokeSoft { 0xff1a1e25 };
+    // Surfaces (darkest -> lightest). Warm, near-black with a deep red cast.
+    juce::Colour bg0        { 0xff0b0708 };   // window backdrop (bottom)
+    juce::Colour bg1        { 0xff140c0e };   // main surfaces
+    juce::Colour bg2        { 0xff1d1517 };   // raised panels
+    juce::Colour bg3        { 0xff2a2226 };   // controls / wells
+    juce::Colour bg4        { 0xff3a3136 };   // hover
+    juce::Colour stroke     { 0xff3a3034 };   // hairlines
+    juce::Colour strokeSoft { 0xff241b1e };
     juce::Colour highlight  { 0x14ffffff };   // top-edge sheen
 
+    // The "display" tint that fills the whole window (top of the gradient)
+    juce::Colour displayTop  { 0xff3a1418 };
+    juce::Colour displayGlow { 0xff8a2228 };  // selected-band column
+
+    // Hardware-ish greys for knobs, buttons and handles
+    juce::Colour knobLight   { 0xffb9b6bb };
+    juce::Colour knobDark    { 0xff6c686e };
+    juce::Colour buttonTop   { 0xff5d585e };
+    juce::Colour buttonBottom{ 0xff433f45 };
+    juce::Colour glassPanel  { 0xa6262125 };  // translucent band panel
+
     // Text
-    juce::Colour text       { 0xffe9ebf1 };
-    juce::Colour textDim    { 0xff9aa1b0 };
-    juce::Colour textFaint  { 0xff5b6272 };
+    juce::Colour text       { 0xffeee8e8 };
+    juce::Colour textDim    { 0xffb1a7a8 };
+    juce::Colour textFaint  { 0xff76696b };
 
     // Semantics
-    juce::Colour accent     { 0xffffb547 };   // plugin identity colour
-    juce::Colour accent2    { 0xffff7a59 };   // secondary identity colour
-    juce::Colour modulation { 0xff4fd1ff };   // modulation rings / sources
+    juce::Colour accent     { 0xffcf2f2c };   // plugin identity colour (rims, selection)
+    juce::Colour accent2    { 0xffff6a55 };   // secondary identity colour
+    juce::Colour spectrum   { 0xffd9a58c };   // analyser line (warm)
+    juce::Colour modulation { 0xff4fd6e0 };   // default modulation colour
     juce::Colour positive   { 0xff5ee0a5 };
     juce::Colour warning    { 0xffffcc4d };
-    juce::Colour danger     { 0xffff5a63 };
+    juce::Colour danger     { 0xffff4d4d };
 
-    // Series / band palette (bands, layers, sources)
+    // Series palette — used for modulation sources (and anything needing distinct hues)
     std::array<juce::Colour, 8> series {{
-        juce::Colour (0xffffb547), juce::Colour (0xffff7a59), juce::Colour (0xffff5c9a),
-        juce::Colour (0xffb57cff), juce::Colour (0xff6f8cff), juce::Colour (0xff3ec6ff),
-        juce::Colour (0xff4be3a6), juce::Colour (0xffd7e35b) }};
+        juce::Colour (0xff4cd07d), juce::Colour (0xff4fd6e0), juce::Colour (0xff3d8ef0), juce::Colour (0xff6b5cf0),
+        juce::Colour (0xff9a4ff0), juce::Colour (0xffe04fd0), juce::Colour (0xfff09a3d), juce::Colour (0xffd8d04f) }};
 
     // Metrics (design-space pixels; editors are scaled as a whole)
-    float radiusSmall  = 4.0f;
-    float radius       = 7.0f;
-    float radiusLarge  = 12.0f;
+    float radiusSmall  = 3.0f;
+    float radius       = 5.0f;
+    float radiusLarge  = 9.0f;
     float hairline     = 1.0f;
 
     juce::Colour seriesColour (int i) const noexcept { return series[(size_t) (((i % 8) + 8) % 8)]; }

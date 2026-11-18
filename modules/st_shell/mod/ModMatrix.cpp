@@ -9,6 +9,7 @@ namespace
     const juce::Identifier targetProp     ("target");
     const juce::Identifier depthProp      ("depth");
     const juce::Identifier enabledProp    ("enabled");
+    const juce::Identifier visibleProp    ("visible");
 
     struct Division { const char* name; double quarterNotes; bool bars; };
 
@@ -25,9 +26,9 @@ namespace
     constexpr int numDivisions = (int) std::size (divisions);
 
     // Indices into Theme::series (cyan/blue/purple/pink for LFOs, greens for envelopes, warm for macros).
-    constexpr int lfoColours[]   = { 5, 4, 3, 2 };
-    constexpr int envColours[]   = { 6, 7 };
-    constexpr int macroColours[] = { 1, 0, 7, 3 };
+    constexpr int lfoColours[]   = { 1, 2, 4, 5 };
+    constexpr int envColours[]   = { 3, 6 };
+    constexpr int macroColours[] = { 0, 7, 4, 1 };
 
     inline float readRef (const params::Ref& r, float fallback) noexcept
     {
@@ -409,11 +410,12 @@ void ModMatrix::removeAllRoutingsForTarget (const juce::String& paramId)
             mod.removeChild (i, getUndoManager());
 }
 
-void ModMatrix::removeAllRoutingsForSource (SourceId s)
+void ModMatrix::removeAllRoutingsForSource (SourceId s, bool newTransaction)
 {
     auto mod = getModTree();
     const auto key = s.toString();
-    beginUndoTransaction ("Remove Modulation");
+    if (newTransaction)
+        beginUndoTransaction ("Remove Modulation");
     for (int i = mod.getNumChildren(); --i >= 0;)
         if (mod.getChild (i)[sourceProp].toString() == key)
             mod.removeChild (i, getUndoManager());
@@ -488,6 +490,73 @@ int ModMatrix::getNumRoutings() const
 }
 
 //==============================================================================
+juce::StringArray ModMatrix::getVisibleKeys() const
+{
+    auto mod = getModTree();
+    juce::StringArray keys;
+
+    if (mod.isValid() && mod.hasProperty (visibleProp))
+    {
+        keys.addTokens (mod[visibleProp].toString(), ",", {});
+        keys.trim();
+        keys.removeEmptyStrings();
+        keys.removeDuplicates (true);
+    }
+    else
+    {
+        if (config.numLfos > 0)      keys.add (SourceId::lfo (0).toString());
+        if (config.numEnvelopes > 0) keys.add (SourceId::envelope (0).toString());
+        if (config.numMacros > 0)    keys.add (SourceId::macro (0).toString());
+    }
+    return keys;
+}
+
+bool ModMatrix::isSourceShown (SourceId s) const
+{
+    if (! isValidSource (s))
+        return false;
+    return getVisibleKeys().contains (s.toString()) || ! getRoutingsForSource (s).empty();
+}
+
+void ModMatrix::setSourceShown (SourceId s, bool shown)
+{
+    if (! isValidSource (s))
+        return;
+
+    auto keys = getVisibleKeys();
+    const auto key = s.toString();
+    const bool listed = keys.contains (key);
+    const bool explicitState = getModTree().hasProperty (visibleProp);
+
+    if (listed == shown && explicitState)
+        return;
+
+    if (shown && ! listed) keys.add (key);
+    if (! shown)           keys.removeString (key);
+
+    getOrCreateModTree().setProperty (visibleProp, keys.joinIntoString (","), getUndoManager());
+}
+
+std::vector<int> ModMatrix::getShownSources() const
+{
+    std::vector<int> out;
+    auto add = [&out] (int i) { if (i >= 0 && std::find (out.begin(), out.end(), i) == out.end()) out.push_back (i); };
+
+    for (auto& k : getVisibleKeys())
+        if (auto id = SourceId::fromString (k))
+            add (getSourceIndex (*id));
+
+    const auto all = getRoutings();
+    for (int i = 0; i < numSources; ++i)
+    {
+        const auto id = getSourceId (i);
+        if (std::any_of (all.begin(), all.end(), [id] (const Routing& r) { return r.source == id; }))
+            add (i);
+    }
+    return out;
+}
+
+//==============================================================================
 void ModMatrix::rebuildFromState()
 {
     std::vector<Routing> fresh;
@@ -539,6 +608,8 @@ void ModMatrix::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Ide
 {
     if (tree.hasType (routingType) && tree.getParent().hasType (modulationType))
         rebuildFromState();
+    else if (tree.hasType (modulationType))
+        sendChangeMessage();   // e.g. source visibility
 }
 
 void ModMatrix::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)

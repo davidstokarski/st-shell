@@ -16,6 +16,8 @@ ModulationBinder::~ModulationBinder()
 
     if (panel != nullptr)
         panel->onSourceDrag = nullptr;
+    if (strip != nullptr)
+        strip->onSourceDrag = nullptr;
 
     for (auto& b : bindings)
         unbind (b);
@@ -30,6 +32,23 @@ void ModulationBinder::attachPanel (ModulationPanel* p)
 
     if (p != nullptr)
         p->onSourceDrag = [this] (int i) { setDragSource (i); };
+}
+
+void ModulationBinder::attachStrip (ModulationStrip* s)
+{
+    if (strip != nullptr)
+        strip->onSourceDrag = nullptr;
+
+    strip = s;
+
+    if (s != nullptr)
+        s->onSourceDrag = [this] (int i) { setDragSource (i); };
+}
+
+juce::Colour ModulationBinder::colourFor (int i) const
+{
+    const auto c = matrix.getSourceColour (i);
+    return c.isTransparent() ? Theme::get().seriesColour (matrix.getSourceColourIndex (matrix.getSourceId (i))) : c;
 }
 
 void ModulationBinder::setAutoRefresh (bool b)
@@ -51,7 +70,8 @@ void ModulationBinder::refresh()
         auto* c = stack.back();
         stack.pop_back();
 
-        if (dynamic_cast<ModulationPanel*> (c) != nullptr)
+        if (dynamic_cast<ModulationPanel*> (c) != nullptr || dynamic_cast<ModulationStrip*> (c) != nullptr
+            || dynamic_cast<ModulationPopover*> (c) != nullptr)
             continue;
 
         if (auto* knob = dynamic_cast<Knob*> (c))
@@ -83,7 +103,7 @@ void ModulationBinder::bind (Knob& knob, const juce::String& id)
     };
 
     if (dragSource >= 0)
-        knob.setModulationDropHint (true, panel != nullptr ? panel->getSourceColour (dragSource) : juce::Colour());
+        knob.setModulationDropHint (true, colourFor (dragSource));
 
     bindings.push_back (std::move (b));
 }
@@ -111,6 +131,8 @@ void ModulationBinder::createRouting (int sourceIndex, const juce::String& param
 
     if (panel != nullptr)
         panel->selectSource (sourceIndex);
+    if (strip != nullptr)
+        strip->selectSource (sourceIndex);
 
     setDragSource (-1);
 }
@@ -118,7 +140,7 @@ void ModulationBinder::createRouting (int sourceIndex, const juce::String& param
 void ModulationBinder::setDragSource (int i)
 {
     dragSource = i;
-    const auto c = (i >= 0 && panel != nullptr) ? panel->getSourceColour (i) : juce::Colour();
+    const auto c = i >= 0 ? colourFor (i) : juce::Colour();
 
     for (auto& b : bindings)
         if (auto* k = b.knob.getComponent())
@@ -134,17 +156,14 @@ void ModulationBinder::addMenuItems (juce::PopupMenu& menu, const juce::String& 
     menu.addSeparator();
     menu.addSectionHeader ("Modulation");
 
-    auto colourFor = [this] (mod::SourceId s)
-    {
-        return Theme::get().seriesColour (matrix.getSourceColourIndex (s));
-    };
+    auto colourOf = [this] (mod::SourceId s) { return colourFor (matrix.getSourceIndex (s)); };
 
     for (auto& r : routings)
     {
         const auto label = "Remove " + matrix.getSourceName (r.source) + "  ("
                          + params::formatPercent (r.depth * 100.0f, true) + (r.enabled ? ")" : ", off)");
         juce::PopupMenu::Item item (label);
-        item.colour = colourFor (r.source);
+        item.colour = colourOf (r.source);
         item.action = [m, s = r.source, paramId] { m->removeRouting (s, paramId); };
         menu.addItem (std::move (item));
     }
@@ -160,7 +179,7 @@ void ModulationBinder::addMenuItems (juce::PopupMenu& menu, const juce::String& 
         const bool routed = std::any_of (routings.begin(), routings.end(), [s] (const mod::Routing& r) { return r.source == s; });
 
         juce::PopupMenu::Item item (matrix.getSourceName (s));
-        item.colour = colourFor (s);
+        item.colour = colourOf (s);
         item.isTicked = routed;
         item.isEnabled = ! routed && ! full;
         item.action = [weakAlive, this, i, paramId]

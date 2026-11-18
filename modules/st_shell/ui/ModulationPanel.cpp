@@ -466,9 +466,10 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        auto hint = r.removeFromBottom (18);
+        const bool narrow = r.getWidth() < 300;
+        auto hint = r.removeFromBottom (narrow ? 30 : 18);
         hintArea = hint;
-        const int d = juce::jmin (r.getHeight(), 140);
+        const int d = juce::jmin (r.getHeight(), narrow ? 118 : 140);
         knob.setBounds (r.withSizeKeepingCentre (d - 14, d));
     }
 
@@ -476,7 +477,7 @@ public:
     {
         g.setColour (Theme::get().textFaint);
         g.setFont (fonts::regular (11.0f));
-        g.drawText ("Drag the tab onto any knob, then automate this macro", hintArea, juce::Justification::centred, true);
+        g.drawFittedText ("Drag this source onto any knob, then automate the macro", hintArea, juce::Justification::centred, 2, 1.0f);
     }
 
 private:
@@ -679,7 +680,145 @@ private:
     juce::Rectangle<float> dotArea;
 };
 
+//==============================================================================
+static juce::Colour colourForSource (mod::ModMatrix& m, int flat)
+{
+    const auto c = m.getSourceColour (flat);
+    return c.isTransparent() ? Theme::get().seriesColour (m.getSourceColourIndex (m.getSourceId (flat))) : c;
+}
+
+/** One source's editor + its routing list (used by ModulationStrip's popover). */
+class SourceEditorPanel : public juce::Component, private juce::ChangeListener, private juce::Timer
+{
+public:
+    SourceEditorPanel (mod::ModMatrix& m, int flat)
+        : matrix (m), index (flat), id (m.getSourceId (flat)), colour (colourForSource (m, flat))
+    {
+        switch (id.kind)
+        {
+            case mod::SourceKind::lfo:      editor = std::make_unique<LfoEditor> (matrix, index, colour); break;
+            case mod::SourceKind::envelope: editor = std::make_unique<EnvelopeEditor> (matrix, index, colour); break;
+            case mod::SourceKind::macro:    editor = std::make_unique<MacroEditor> (matrix, index, colour); break;
+        }
+        addAndMakeVisible (*editor);
+
+        viewport.setViewedComponent (&listContent, false);
+        viewport.setScrollBarsShown (true, false);
+        viewport.setScrollBarThickness (6);
+        addAndMakeVisible (viewport);
+
+        matrix.addChangeListener (this);
+        setSize ((id.kind == mod::SourceKind::macro ? 190 : 420) + gap + listWidth, 200);
+        refreshRoutings();
+        startTimerHz (40);
+    }
+
+    ~SourceEditorPanel() override
+    {
+        stopTimer();
+        matrix.removeChangeListener (this);
+        viewport.setViewedComponent (nullptr, false);
+        rows.clear();
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        listArea = r.removeFromRight (listWidth);
+        r.removeFromRight (gap);
+        editor->setBounds (r);
+
+        listHeader = listArea.removeFromTop (18);
+        listArea.removeFromTop (6);
+        viewport.setBounds (listArea);
+        layoutRows();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = Theme::get();
+        g.setColour (t.strokeSoft);
+        g.fillRect ((float) listArea.getX() - (float) gap * 0.5f, 2.0f, 1.0f, (float) getHeight() - 4.0f);
+
+        auto h = listHeader.toFloat();
+        paint::caption (g, "Routings", h, t.textDim, juce::Justification::centredLeft, 10.0f);
+        g.setColour (t.textFaint);
+        g.setFont (fonts::medium (10.5f));
+        g.drawText (juce::String (matrix.getNumRoutings()) + " / " + juce::String (matrix.getConfig().maxRoutings) + " slots",
+                    h, juce::Justification::centredRight, false);
+
+        if (rows.isEmpty())
+        {
+            auto hint = listArea.toFloat().withSizeKeepingCentre ((float) listArea.getWidth() - 16.0f, 58.0f);
+            drawHandle (g, hint.removeFromTop (16.0f).withSizeKeepingCentre (14.0f, 14.0f), colour, 0.4f, true);
+            hint.removeFromTop (8.0f);
+            g.setColour (t.textDim);
+            g.setFont (fonts::medium (12.0f));
+            g.drawText ("Drag the connector onto a knob", hint.removeFromTop (16.0f), juce::Justification::centred, true);
+            g.setColour (t.textFaint);
+            g.setFont (fonts::regular (11.0f));
+            g.drawText ("Right-click a knob to remove modulation", hint.removeFromTop (15.0f), juce::Justification::centred, true);
+        }
+    }
+
+private:
+    static constexpr int listWidth = 250, gap = 22;
+
+    mod::ModMatrix& matrix;
+    const int index;
+    const mod::SourceId id;
+    const juce::Colour colour;
+    std::unique_ptr<SourceEditor> editor;
+    juce::Viewport viewport;
+    juce::Component listContent;
+    juce::OwnedArray<RoutingRow> rows;
+    juce::Rectangle<int> listArea, listHeader;
+
+    void refreshRoutings()
+    {
+        const auto mine = matrix.getRoutingsForSource (id);
+
+        bool sameSet = (int) mine.size() == rows.size();
+        for (int i = 0; sameSet && i < rows.size(); ++i)
+            sameSet = rows[i]->getTargetId() == mine[(size_t) i].targetId;
+
+        if (sameSet)
+        {
+            for (int i = 0; i < rows.size(); ++i)
+                rows[i]->update (mine[(size_t) i]);
+        }
+        else
+        {
+            rows.clear();
+            for (auto& r : mine)
+                listContent.addAndMakeVisible (rows.add (new RoutingRow (matrix, r, colour)));
+            layoutRows();
+        }
+        repaint();
+    }
+
+    void layoutRows()
+    {
+        constexpr int rowH = 28;
+        const bool needsScroll = rows.size() * rowH > viewport.getHeight();
+        const int w = viewport.getWidth() - (needsScroll ? viewport.getScrollBarThickness() + 2 : 0);
+        listContent.setSize (juce::jmax (1, w), juce::jmax (1, rows.size() * rowH));
+        for (int i = 0; i < rows.size(); ++i)
+            rows[i]->setBounds (0, i * rowH, w, rowH);
+    }
+
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { refreshRoutings(); }
+    void timerCallback() override { editor->tick(); }
+};
+
 } // namespace modulation_detail
+
+std::unique_ptr<juce::Component> createModSourceEditor (mod::ModMatrix& m, int flatIndex)
+{
+    if (! juce::isPositiveAndBelow (flatIndex, m.getNumSources()))
+        return {};
+    return std::make_unique<modulation_detail::SourceEditorPanel> (m, flatIndex);
+}
 
 //==============================================================================
 using namespace modulation_detail;

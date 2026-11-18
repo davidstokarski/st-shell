@@ -30,6 +30,17 @@ namespace paint
     void softShadow (juce::Graphics&, juce::Rectangle<float>, float radius, float spread = 10.0f, float alpha = 0.45f);
     /** Glow stroke: draws a path several times with decreasing width/alpha. */
     void glowStroke (juce::Graphics&, const juce::Path&, juce::Colour, float width, float glow = 6.0f);
+    /** Grey gradient button face (header buttons, style selector). */
+    void greyButton (juce::Graphics&, juce::Rectangle<float>, float radius, bool hover, bool down, bool on = false);
+    /** Pill-shaped grip with a centre dash (band handles, fader caps). */
+    void pillHandle (juce::Graphics&, juce::Rectangle<float>, bool hover, bool active = false);
+    /** Matte grey knob disc with a white crescent pointer at `angle` (radians, 0 = 12 o'clock). */
+    void knobDisc (juce::Graphics&, juce::Point<float> centre, float radius, float angle, bool hover);
+    /** Modulation connector dot (ring + core). */
+    void connectorDot (juce::Graphics&, juce::Point<float> centre, float radius, juce::Colour, bool hover = false);
+    /** Soft blurred "light trail" along a path (for modulation connections). */
+    void lightTrail (juce::Graphics&, const juce::Path&, juce::Colour, float width);
+
     /** Draw text with ST caption style (uppercase, tracked). */
     void caption (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Colour, juce::Justification = juce::Justification::centred, float height = 10.5f);
 }

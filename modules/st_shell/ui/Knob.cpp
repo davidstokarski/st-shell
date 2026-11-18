@@ -183,13 +183,24 @@ juce::String Knob::getValueText() const
                                               ? " " + param.getLabel() : juce::String());
 }
 
+float Knob::getCaptionHeight() const noexcept
+{
+    return size == Size::mini ? 0.0f : (size == Size::small ? 16.0f : 20.0f);
+}
+
 juce::Rectangle<float> Knob::getDialBounds() const
 {
     auto r = getLocalBounds().toFloat();
-    const float textH = size == Size::mini ? 0.0f : (size == Size::small ? 15.0f : 18.0f);
-    r.removeFromBottom (textH);
+    r.removeFromBottom (getCaptionHeight());
     const float d = juce::jmin (r.getWidth(), r.getHeight());
     return r.withSizeKeepingCentre (d, d);
+}
+
+juce::Point<float> Knob::getModulationAnchor() const
+{
+    auto textArea = getLocalBounds().toFloat().removeFromBottom (juce::jmax (12.0f, getCaptionHeight()));
+    const float w = fonts::stringWidth (fonts::caption (size == Size::small ? 10.0f : 11.5f), label.toUpperCase());
+    return { textArea.getCentreX() + w * 0.5f + 8.0f, textArea.getCentreY() };
 }
 
 void Knob::paint (juce::Graphics& g)
@@ -200,116 +211,86 @@ void Knob::paint (juce::Graphics& g)
     const auto centre = dial.getCentre();
     const float R = dial.getWidth() * 0.5f;
 
-    constexpr float startA = juce::MathConstants<float>::pi * 1.25f;
-    constexpr float endA   = juce::MathConstants<float>::pi * 2.75f;
-    const float range = endA - startA;
-    const float valueA = startA + range * normValue;
-    const float defNorm = param.getDefaultValue();
-    const float originA = bipolar ? startA + range * 0.5f : (defNorm > 0.001f && defNorm < 0.999f ? startA : startA);
+    constexpr float startA = -2.45f, endA = 2.45f;   // radians from 12 o'clock
+    const float valueA = startA + (endA - startA) * normValue;
 
-    const float arcW   = juce::jmax (2.0f, R * (size == Size::large ? 0.075f : 0.09f));
-    const float arcR   = R - arcW * 0.5f - (modSource ? arcW * 1.4f : 0.5f);
-    const float bodyR  = arcR - arcW * 1.6f;
-    const auto active  = enabled ? colour : t.textFaint;
+    const float modW = juce::jmax (2.0f, R * 0.07f);
+    const float outerR = R - modW - 1.5f;                       // leave room for the modulation arc
+    const bool ringed = look == Look::ringed;
+    const float rimW = ringed ? outerR * 0.17f : 0.0f;
+    const float discR = outerR - rimW - (ringed ? 1.0f : 0.0f);
 
-    // Track
+    // Modulation-drop hint
+    if (modDropHint || modDropHover)
     {
-        juce::Path track;
-        track.addCentredArc (centre.x, centre.y, arcR, arcR, 0.0f, startA, endA, true);
-        g.setColour (t.bg3.brighter (0.08f));
-        g.strokePath (track, juce::PathStrokeType (arcW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        const auto c = modDropColour.isTransparent() ? t.modulation : modDropColour;
+        g.setColour (c.withAlpha (modDropHover ? 0.35f : 0.12f));
+        g.fillEllipse (juce::Rectangle<float> ((R + 2.0f) * 2.0f, (R + 2.0f) * 2.0f).withCentre (centre));
     }
 
-    // Value arc
-    if (std::abs (valueA - originA) > 0.001f)
+    // Red rim (big knobs): a thick ring with a light index at 12 o'clock and the value position marked white.
+    if (ringed)
     {
-        juce::Path arc;
-        arc.addCentredArc (centre.x, centre.y, arcR, arcR, 0.0f, juce::jmin (originA, valueA), juce::jmax (originA, valueA), true);
-        if (enabled) paint::glowStroke (g, arc, active, arcW, arcW * 2.2f);
-        else { g.setColour (active); g.strokePath (arc, juce::PathStrokeType (arcW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)); }
+        const float rr = outerR - rimW * 0.5f;
+        juce::Path rim;
+        rim.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, 0.0f, juce::MathConstants<float>::twoPi, true);
+
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillEllipse (juce::Rectangle<float> (outerR * 2.0f + 2.0f, outerR * 2.0f + 2.0f).withCentre (centre.translated (0.0f, 1.5f)));
+
+        const auto rimCol = enabled ? colour : t.textFaint;
+        g.setGradientFill (juce::ColourGradient (rimCol.brighter (0.25f), centre.x, centre.y - outerR,
+                                                 rimCol.darker (0.45f), centre.x, centre.y + outerR, false));
+        g.strokePath (rim, juce::PathStrokeType (rimW));
+
+        // inner + outer edges of the rim
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawEllipse (juce::Rectangle<float> (outerR * 2.0f, outerR * 2.0f).withCentre (centre), 0.8f);
+
+        // scale ticks: start, centre, end
+        for (float a : { startA, 0.0f, endA })
+        {
+            const auto p0 = centre.getPointOnCircumference (outerR - rimW + 1.5f, a);
+            const auto p1 = centre.getPointOnCircumference (outerR - 1.0f, a);
+            g.setColour (juce::Colours::white.withAlpha (a == 0.0f ? 0.95f : 0.6f));
+            g.drawLine ({ p0, p1 }, a == 0.0f ? 2.0f : 1.2f);
+        }
+
+        // white "lit" segment from the start of the travel to the current value
+        juce::Path lit;
+        lit.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, startA, valueA, true);
+        g.setColour (juce::Colours::white.withAlpha (0.22f));
+        g.strokePath (lit, juce::PathStrokeType (rimW * 0.55f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
     }
 
-    // Modulation ring
+    paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
+
+    // Modulation range arc (outside the knob) + live position
     if (modSource && modState.active)
     {
-        const float mr = arcR + arcW * 1.45f;
-        const float a0 = startA + range * juce::jlimit (0.0f, 1.0f, modState.lo);
-        const float a1 = startA + range * juce::jlimit (0.0f, 1.0f, modState.hi);
         const auto mc = modState.colour.isTransparent() ? t.modulation : modState.colour;
+        const float mr = R - modW * 0.5f - 0.5f;
+        const float a0 = startA + (endA - startA) * juce::jlimit (0.0f, 1.0f, juce::jmin (modState.lo, modState.hi));
+        const float a1 = startA + (endA - startA) * juce::jlimit (0.0f, 1.0f, juce::jmax (modState.lo, modState.hi));
 
-        juce::Path ring;
-        ring.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, juce::jmin (a0, a1), juce::jmax (a0, a1) + 0.0001f, true);
-        g.setColour (mc.withAlpha (0.55f));
-        g.strokePath (ring, juce::PathStrokeType (arcW * 0.7f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        const float ca = startA + range * juce::jlimit (0.0f, 1.0f, modState.current);
-        auto p = centre.getPointOnCircumference (mr, ca);
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, a0, a1 + 0.0001f, true);
+        g.setColour (mc.withAlpha (0.25f));
+        g.strokePath (arc, juce::PathStrokeType (modW + 2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (mc);
-        g.fillEllipse (juce::Rectangle<float> (arcW * 1.3f, arcW * 1.3f).withCentre (p));
-    }
+        g.strokePath (arc, juce::PathStrokeType (modW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Modulation drop target highlight
-    if (modDropHover || modDropHint)
-    {
-        const float mr = modSource ? arcR + arcW * 1.45f : arcR;
-        const auto mc = modDropColour.isTransparent() ? t.modulation : modDropColour;
-
-        juce::Path ring;
-        ring.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, startA, endA, true);
-
-        if (modDropHover)
-        {
-            g.setColour (mc.withAlpha (0.10f));
-            g.fillEllipse (dial.reduced (0.5f));
-            paint::glowStroke (g, ring, mc, arcW * 0.8f, arcW * 3.0f);
-        }
-        else
-        {
-            juce::Path dashed;
-            const float dashes[] = { arcW * 1.2f, arcW * 1.4f };
-            juce::PathStrokeType (arcW * 0.6f).createDashedStroke (dashed, ring, dashes, 2);
-            g.setColour (mc.withAlpha (0.45f));
-            g.fillPath (dashed);
-        }
-    }
-
-    // Body
-    {
-        auto body = juce::Rectangle<float> (bodyR * 2.0f, bodyR * 2.0f).withCentre (centre);
-        paint::softShadow (g, body, bodyR, bodyR * 0.35f, 0.6f);
-
-        const auto top = t.bg4.brighter (hovering || dragging ? 0.18f : 0.1f);
-        const auto bottom = t.bg2.darker (0.1f);
-        juce::ColourGradient grad (top, centre.x - bodyR * 0.5f, centre.y - bodyR, bottom, centre.x + bodyR * 0.4f, centre.y + bodyR, false);
-        g.setGradientFill (grad);
-        g.fillEllipse (body);
-
-        // rim: light on top, dark at bottom
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.16f), centre.x, body.getY(),
-                                                 juce::Colours::black.withAlpha (0.35f), centre.x, body.getBottom(), false));
-        g.drawEllipse (body.reduced (0.5f), 1.0f);
-
-        // inner face
-        auto face = body.reduced (bodyR * 0.16f);
-        g.setGradientFill (juce::ColourGradient (t.bg3.brighter (0.05f), centre.x, face.getY(),
-                                                 t.bg3.darker (0.15f), centre.x, face.getBottom(), false));
-        g.fillEllipse (face);
-    }
-
-    // Pointer
-    {
-        const auto p0 = centre.getPointOnCircumference (bodyR * 0.30f, valueA);
-        const auto p1 = centre.getPointOnCircumference (bodyR * 0.78f, valueA);
-        g.setColour (enabled ? t.text : t.textFaint);
-        g.drawLine ({ p0, p1 }, juce::jmax (1.6f, R * 0.06f));
+        const float ca = startA + (endA - startA) * juce::jlimit (0.0f, 1.0f, modState.current);
+        g.setColour (juce::Colours::white);
+        g.fillEllipse (juce::Rectangle<float> (modW * 1.3f, modW * 1.3f).withCentre (centre.getPointOnCircumference (mr, ca)));
     }
 
     // Caption / value
     if (size != Size::mini)
     {
-        auto textArea = getLocalBounds().toFloat().removeFromBottom (size == Size::small ? 15.0f : 18.0f);
+        auto textArea = getLocalBounds().toFloat().removeFromBottom (getCaptionHeight());
         const bool showValue = dragging || hovering || showValueAlways || textEntry != nullptr;
-        const float h = size == Size::small ? 10.0f : 11.0f;
+        const float h = size == Size::small ? 10.0f : 11.5f;
 
         if (modDropHover)
         {
@@ -324,7 +305,15 @@ void Knob::paint (juce::Graphics& g)
         }
         else
         {
-            paint::caption (g, label, textArea, enabled ? t.textDim : t.textFaint, juce::Justification::centred, h);
+            paint::caption (g, label, textArea, enabled ? t.text.withAlpha (0.92f) : t.textFaint, juce::Justification::centred, h);
+
+            if (modSource && modState.active)
+            {
+                const auto mc = modState.colour.isTransparent() ? t.modulation : modState.colour;
+                const auto a = getModulationAnchor();
+                g.setColour (mc);
+                g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (a));
+            }
         }
     }
 }

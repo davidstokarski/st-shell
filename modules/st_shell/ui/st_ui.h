@@ -7,3 +7,5 @@
 #include "EditorBase.h"
 #include "ModulationPanel.h"
 #include "ModulationBinder.h"
+#include "ModulationStrip.h"
+#include "ModulationTrails.h"

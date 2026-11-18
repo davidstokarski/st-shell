@@ -11,6 +11,12 @@ namespace modulation_detail
 }
 
 //==============================================================================
+/** Editor for one modulation source: its controls (LFO / envelope / macro) next to its routing list
+    with depth sliders. Sized to its preferred size on creation (design pixels, ~610-670 x 200).
+    Used by st::ModulationStrip's popover; nullptr for an invalid index. */
+std::unique_ptr<juce::Component> createModSourceEditor (mod::ModMatrix&, int flatIndex);
+
+//==============================================================================
 /** Compact modulation panel: source tabs (LFOs, envelopes, macros) with live activity and drag
     handles, the selected source's editor, and its routing list.
 

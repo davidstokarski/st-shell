@@ -93,7 +93,8 @@ public:
     bool addRouting (SourceId, const juce::String& paramId, float depth = 0.25f);
     bool removeRouting (SourceId, const juce::String& paramId);
     void removeAllRoutingsForTarget (const juce::String& paramId);
-    void removeAllRoutingsForSource (SourceId);
+    /** Removes every routing of a source. Pass newTransaction = false to fold it into the caller's undo step. */
+    void removeAllRoutingsForSource (SourceId, bool newTransaction = true);
     void clearRoutings();
     /** For continuous drags call beginUndoTransaction() once on mouse-down; consecutive depth
         changes then coalesce into a single undo step. */
@@ -106,6 +107,16 @@ public:
     std::vector<Routing> getRoutingsForSource (SourceId) const;
     std::optional<Routing> getRouting (SourceId, const juce::String& paramId) const;
     int getNumRoutings() const;
+
+    //==============================================================================
+    // Source visibility (UI, message thread). Which sources a modulation strip shows is stored in the
+    // MODULATION tree ("visible" property), so it travels with presets/sessions and is undoable.
+    // A source with routings is always shown. Fresh state: the first LFO, envelope and macro.
+    bool isSourceShown (SourceId) const;
+    /** Shows/hides a source (no new undo transaction is started: call beginUndoTransaction() first). */
+    void setSourceShown (SourceId, bool shown);
+    /** Flat indices of shown sources in display order (order they were added; routed extras appended). */
+    std::vector<int> getShownSources() const;
 
     //==============================================================================
     // Audio thread.
@@ -220,6 +231,7 @@ private:
     juce::ValueTree getModTree() const;
     juce::ValueTree getOrCreateModTree();
     juce::ValueTree findRoutingTree (SourceId, const juce::String& paramId) const;
+    juce::StringArray getVisibleKeys() const;
     void rebuildFromState();
     float nextRandom() noexcept;
     void updateLfo (int i, int numSamples) noexcept;

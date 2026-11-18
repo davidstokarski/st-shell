@@ -50,6 +50,8 @@ class Knob : public ParameterControl, public juce::DragAndDropTarget, private ju
 {
 public:
     enum class Size { large, medium, small, mini };
+    /** classic = matte grey disc with white crescent; ringed = adds the coloured rim (hero controls). */
+    enum class Look { classic, ringed };
 
     Knob (juce::RangedAudioParameter&, juce::UndoManager* = nullptr, const juce::String& label = {});
     ~Knob() override;
@@ -58,6 +60,9 @@ public:
     void setColour (juce::Colour c) { colour = c; repaint(); }
     void setBipolar (bool b) { bipolar = b; repaint(); }
     void setSize (Size s) { size = s; repaint(); }
+    void setLook (Look l) { look = l; repaint(); }
+    /** Where modulation connections should attach (local coords, next to the caption). */
+    juce::Point<float> getModulationAnchor() const;
     void setShowValueAlways (bool b) { showValueAlways = b; repaint(); }
     /** Optional override for the displayed value text. */
     std::function<juce::String (float plainValue)> valueToText;
@@ -97,6 +102,8 @@ private:
     juce::String label;
     juce::Colour colour;
     Size size = Size::medium;
+    Look look = Look::classic;
+    float getCaptionHeight() const noexcept;
     bool bipolar = false, hovering = false, dragging = false, showValueAlways = false;
     juce::Point<float> lastDragPos;
     std::function<ModulationDisplay()> modSource;

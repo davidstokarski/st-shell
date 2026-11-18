@@ -69,6 +69,8 @@ struct TestProcessor : juce::AudioProcessor
 {
     explicit TestProcessor (const Config& cfg)
         : apvts (*this, &undo, "STATE", makeLayout (cfg)) {}
+    TestProcessor (const Config&, juce::AudioProcessorValueTreeState::ParameterLayout layout)
+        : apvts (*this, &undo, "STATE", std::move (layout)) {}
 
     const juce::String getName() const override { return "Test"; }
     void prepareToPlay (double, int) override {}
@@ -540,6 +542,229 @@ void testUi()
     binder.refresh();
 }
 
+//==============================================================================
+juce::AudioProcessorValueTreeState::ParameterLayout makeStripLayout (const Config& cfg)
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    for (auto* id : { "mix", "feedback", "freq", "dynamics", "drive", "tone", "level" })
+        layout.add (st::params::makeFloat (id, juce::String (id).toUpperCase(), st::params::linear (0.0f, 1.0f), 0.5f));
+    ModMatrix::addParameters (layout, cfg);
+    return layout;
+}
+
+struct StripProcessor : TestProcessor
+{
+    explicit StripProcessor (const Config& cfg) : TestProcessor (cfg, makeStripLayout (cfg)) {}
+};
+
+/** Saturn-like backdrop + a glass band panel so snapshots show the strip in context. */
+struct MockEditor : juce::Component
+{
+    juce::Rectangle<float> panel;
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = st::Theme::get();
+        const auto r = getLocalBounds().toFloat();
+        juce::ColourGradient grad (t.displayTop, 0.0f, 0.0f, t.bg0, 0.0f, r.getHeight() * 0.72f, false);
+        g.setGradientFill (grad);
+        g.fillRect (r);
+        juce::ColourGradient col (t.displayGlow.withAlpha (0.22f), r.getCentreX(), 120.0f, t.displayGlow.withAlpha (0.0f), r.getCentreX() + 260.0f, 120.0f, true);
+        g.setGradientFill (col);
+        g.fillRect (r.withHeight (300.0f));
+        if (! panel.isEmpty())
+            st::paint::glass (g, panel, 6.0f);
+    }
+};
+
+int countEnabledItems (const juce::PopupMenu& menu)
+{
+    int n = 0;
+    for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+        if (! it.getItem().isSectionHeader && ! it.getItem().isSeparator && it.getItem().isEnabled)
+            ++n;
+    return n;
+}
+
+void testStrip()
+{
+    std::printf ("Modulation strip / trails / source visibility\n");
+    Config cfg;
+    StripProcessor proc (cfg);
+    ModMatrix m (proc.apvts, cfg);
+    for (auto* id : { "mix", "feedback", "freq", "dynamics", "drive", "tone", "level" })
+        m.addTarget (id);
+    m.prepare (kSr, 512);
+
+    const int lfo1 = m.getSourceIndex (SourceId::lfo (0)), lfo2 = m.getSourceIndex (SourceId::lfo (1));
+    const int env1 = m.getSourceIndex (SourceId::envelope (0)), mac1 = m.getSourceIndex (SourceId::macro (0));
+    const int mac2 = m.getSourceIndex (SourceId::macro (1));
+
+    // --- visibility model
+    check (m.getShownSources() == std::vector<int> { lfo1, env1, mac1 }, "fresh state shows LFO 1, ENV 1, MACRO 1");
+    check (! m.isSourceShown (SourceId::lfo (1)), "LFO 2 hidden by default");
+    m.setSourceShown (SourceId::lfo (1), true);
+    check (m.getShownSources() == std::vector<int> { lfo1, env1, mac1, lfo2 }, "shown source appended in display order");
+
+    auto saved = proc.apvts.copyState();
+    proc.apvts.replaceState (juce::ValueTree ("STATE"));
+    check (m.getShownSources() == std::vector<int> { lfo1, env1, mac1 }, "replaceState without MODULATION -> defaults");
+    proc.apvts.replaceState (saved.createCopy());
+    check (m.isSourceShown (SourceId::lfo (1)) && m.getShownSources().size() == 4, "visibility restored by replaceState");
+
+    m.setSourceShown (SourceId::envelope (0), false);
+    check (! m.isSourceShown (SourceId::envelope (0)), "hide ENV 1");
+    m.addRouting (SourceId::envelope (0), "drive", 0.3f);
+    check (m.isSourceShown (SourceId::envelope (0)), "routed source always shown");
+    m.removeRouting (SourceId::envelope (0), "drive");
+    check (! m.isSourceShown (SourceId::envelope (0)), "hidden again once unrouted");
+
+    proc.undo.beginNewTransaction();
+    m.beginUndoTransaction ("show");
+    m.setSourceShown (SourceId::macro (2), true);
+    check (m.isSourceShown (SourceId::macro (2)), "show MACRO 3");
+    proc.undo.undo();
+    check (! m.isSourceShown (SourceId::macro (2)), "showing a source is undoable");
+
+    // back to defaults for the UI part
+    proc.apvts.replaceState (juce::ValueTree ("STATE"));
+    m.dispatchPendingMessages();
+
+    // --- strip + binder + trails
+    MockEditor root;
+    root.setBounds (0, 0, 1000, 470);
+    root.panel = { 190.0f, 128.0f, 620.0f, 128.0f };
+
+    struct K { const char* id; const char* label; int x, w, h; st::Knob::Size size; };
+    const K defs[] = {
+        { "mix", "Mix", 200, 70, 86, st::Knob::Size::medium },
+        { "feedback", "Feedback", 275, 80, 86, st::Knob::Size::medium },
+        { "freq", "Freq", 355, 70, 86, st::Knob::Size::medium },
+        { "dynamics", "Dynamics", 430, 84, 86, st::Knob::Size::medium },
+        { "drive", "Drive", 520, 100, 112, st::Knob::Size::large },
+        { "tone", "Tone", 630, 70, 86, st::Knob::Size::medium },
+        { "level", "Level", 715, 80, 92, st::Knob::Size::medium },
+    };
+    juce::OwnedArray<st::Knob> knobs;
+    for (auto& d : defs)
+    {
+        auto* k = knobs.add (new st::Knob (*proc.apvts.getParameter (d.id), &proc.undo, d.label));
+        k->setSize (d.size);
+        if (juce::String (d.id) == "drive" || juce::String (d.id) == "level")
+            k->setLook (st::Knob::Look::ringed);
+        root.addAndMakeVisible (k);
+        k->setBounds (d.x, 256 - d.h - 6 + (d.size == st::Knob::Size::large ? 14 : 0), d.w, d.h);
+    }
+
+    st::ModulationStrip strip (m);
+    root.addAndMakeVisible (strip);
+    strip.setBounds (0, root.getHeight() - st::ModulationStrip::preferredHeight - 8, root.getWidth(), st::ModulationStrip::preferredHeight);
+
+    st::ModulationBinder binder (m, root);
+    binder.attachStrip (&strip);
+    st::ModulationTrails trails (m, strip, root);
+    check (trails.getParentComponent() == &root && trails.getBounds() == root.getLocalBounds(), "trails overlay covers root");
+    check (! trails.hitTest (100, 100), "trails are mouse-transparent");
+
+    check (strip.getShownSources().size() == 3, "strip shows the default sources");
+    check (strip.getConnectorPosition (lfo1).has_value() && ! strip.getConnectorPosition (lfo2).has_value(), "connector positions");
+
+    const int hidden = m.getNumSources() - 3;
+    auto addMenu = strip.createAddMenu();
+    check (countEnabledItems (addMenu) == hidden, fmt ("+ menu lists the %d hidden sources (%d)", hidden, countEnabledItems (addMenu)));
+
+    // Trigger the first "+" item (LFO 2) like a click would.
+    for (juce::PopupMenu::MenuItemIterator it (addMenu); it.next();)
+        if (! it.getItem().isSectionHeader && it.getItem().action) { it.getItem().action(); break; }
+    check (m.isSourceShown (SourceId::lfo (1)) && strip.getConnectorPosition (lfo2).has_value(), "+ menu shows a source");
+    check (countEnabledItems (strip.createAddMenu()) == hidden - 1, "+ menu no longer lists it");
+    strip.showSource (mac2);
+
+    // Drop from a connector onto knobs
+    auto* mixKnob = knobs[0];
+    check (mixKnob->onModulationDropped != nullptr, "binder bound knob next to strip");
+    mixKnob->onModulationDropped (lfo1);
+    check (m.getRouting (SourceId::lfo (0), "mix").has_value(), "drop creates routing");
+    check (strip.getSelectedSource() == lfo1, "drop selects the strip source");
+    m.addRouting (SourceId::lfo (0), "dynamics", 0.3f);
+    m.addRouting (SourceId::lfo (0), "feedback", -0.2f);
+    m.addRouting (SourceId::envelope (0), "drive", 0.4f);
+    m.addRouting (SourceId::envelope (0), "tone", 0.25f);
+    m.addRouting (SourceId::macro (0), "level", 0.5f);
+    m.dispatchPendingMessages();
+    check (strip.createSourceMenu (lfo1).getNumItems() >= 4, "source menu");
+
+    // Popover
+    strip.showPopover (lfo1);
+    check (strip.getPopover() != nullptr && strip.getPopover()->getParentComponent() == &root, "popover opens in the root component");
+    check (root.getLocalBounds().contains (strip.getPopover()->getBounds().reduced (22)), "popover inside the root");
+    strip.closePopover();
+    check (strip.getPopover() == nullptr, "popover closes");
+
+    // Paint with live data
+    {
+        juce::Image img (juce::Image::ARGB, 1000, 470, true);
+        juce::Graphics g (img);
+        root.paintEntireComponent (g, false);
+        check (true, "strip + trails painted");
+    }
+
+    // Hide / remove
+    strip.removeSource (lfo2);
+    check (! m.isSourceShown (SourceId::lfo (1)), "remove hides the source");
+
+    // Optional snapshots for visual review: ST_MOD_SNAPSHOT_DIR=/some/dir
+    if (auto dir = juce::SystemStats::getEnvironmentVariable ("ST_MOD_SNAPSHOT_DIR", {}); dir.isNotEmpty())
+    {
+        setParam (proc.apvts, "mod_lfo1_shape", 0.0f);
+        setParam (proc.apvts, "mod_macro1", 62.0f);
+        setParam (proc.apvts, "mod_macro2", 30.0f);
+        strip.showSource (lfo2);
+        setParam (proc.apvts, "mod_lfo2_shape", 2.0f);
+
+        auto run = [&] (int frames)
+        {
+            for (int k = 0; k < frames; ++k)
+            {
+                for (int a = 0; a < 12; ++a)
+                {
+                    std::vector<float> sig (kChunk, 0.7f * (float) std::abs (std::sin ((double) (k * 12 + a) * 0.015)));
+                    const float* ch[1] = { sig.data() };
+                    m.feedEnvelopeInput (0, ch, 1, kChunk);
+                    m.advance (kChunk);
+                }
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (17);
+            }
+        };
+
+        auto snap = [&] (const juce::String& name)
+        {
+            const float scale = 2.0f;
+            juce::Image img (juce::Image::ARGB, (int) ((float) root.getWidth() * scale), (int) ((float) root.getHeight() * scale), true);
+            {
+                juce::Graphics g (img);
+                g.addTransform (juce::AffineTransform::scale (scale));
+                root.paintEntireComponent (g, false);
+            }
+            juce::PNGImageFormat png;
+            juce::File f (dir + "/" + name + ".png");
+            f.deleteFile();
+            juce::FileOutputStream os (f);
+            png.writeImageToStream (img, os);
+        };
+
+        run (90);
+        snap ("strip_trails");
+        strip.showPopover (lfo1);
+        run (30);
+        snap ("strip_popover_lfo");
+        strip.showPopover (mac1);
+        run (20);
+        snap ("strip_popover_macro");
+        strip.closePopover();
+    }
+}
+
 } // namespace
 
 int main()
@@ -553,6 +778,7 @@ int main()
         testClamping();
         testNoAllocation();
         testUi();
+        testStrip();
     }
 
     std::printf ("\n%d checks, %d failures\n", gChecks, gFailures);

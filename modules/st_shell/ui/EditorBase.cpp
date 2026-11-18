@@ -82,23 +82,22 @@ void TextPrompt::close (bool accept)
 //==============================================================================
 HeaderBar::HeaderBar (ProcessorBase& p) : proc (p), product (JucePlugin_Name)
 {
-    for (auto* b : { &undoButton, &redoButton, &prevButton, &nextButton, &saveButton, &copyButton, &settingsButton })
+    for (auto* b : { &undoButton, &redoButton, &prevButton, &nextButton, &settingsButton })
+    {
+        b->setMinimal (true);
         addAndMakeVisible (b);
-    addAndMakeVisible (aButton);
-    addAndMakeVisible (bButton);
+    }
+    for (auto* b : { &abButton, &copyButton, &saveButton })
+        addAndMakeVisible (b);
 
     undoButton.onClick = [this] { proc.undoManager.undo(); };
     redoButton.onClick = [this] { proc.undoManager.redo(); };
     prevButton.onClick = [this] { proc.presets.loadPrevious(); };
     nextButton.onClick = [this] { proc.presets.loadNext(); };
     saveButton.onClick = [this] { promptSave(); };
-    aButton.onClick = [this] { proc.ab.select (0); };
-    bButton.onClick = [this] { proc.ab.select (1); };
+    abButton.onClick = [this] { proc.ab.toggle(); };
     copyButton.onClick = [this] { proc.ab.copyActiveToOther(); };
     settingsButton.onClick = [this] { showSettingsMenu(); };
-
-    aButton.setTooltip ("Compare slot A");
-    bButton.setTooltip ("Compare slot B");
 
     proc.presets.addChangeListener (this);
     proc.ab.addChangeListener (this);
@@ -121,9 +120,10 @@ void HeaderBar::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void HeaderBar::refreshAB()
 {
-    aButton.setToggleState (proc.ab.getActive() == 0, juce::dontSendNotification);
-    bButton.setToggleState (proc.ab.getActive() == 1, juce::dontSendNotification);
-    copyButton.setTooltip (proc.ab.getActive() == 0 ? "Copy A to B" : "Copy B to A");
+    const bool a = proc.ab.getActive() == 0;
+    abButton.setButtonText (a ? "A" : "B");
+    abButton.setDimmedText (a ? "" : "A/", a ? "/B" : "");
+    copyButton.setTooltip (a ? "Copy A to B" : "Copy B to A");
 }
 
 void HeaderBar::timerCallback()
@@ -137,90 +137,88 @@ void HeaderBar::timerCallback()
 
 void HeaderBar::resized()
 {
-    auto r = getLocalBounds().reduced (14, 9);
-    brandArea = r.removeFromLeft (190);
+    auto r = getLocalBounds().withTrimmedTop (8).withTrimmedBottom (8);
+    brandArea = r.removeFromLeft (300);
 
-    settingsButton.setBounds (r.removeFromRight (30));
     r.removeFromRight (14);
+    settingsButton.setBounds (r.removeFromRight (28).withSizeKeepingCentre (28, 28));
 
-    copyButton.setBounds (r.removeFromRight (30));
-    r.removeFromRight (4);
-    bButton.setBounds (r.removeFromRight (28));
-    r.removeFromRight (2);
-    aButton.setBounds (r.removeFromRight (28));
-    r.removeFromRight (14);
-    redoButton.setBounds (r.removeFromRight (30));
-    r.removeFromRight (2);
-    undoButton.setBounds (r.removeFromRight (30));
-
-    // Centre the preset strip in the full header width.
-    const int presetW = juce::jmin (380, getWidth() - 2 * 380);
-    auto centre = getLocalBounds().reduced (0, 9).withSizeKeepingCentre (juce::jmax (260, presetW), getHeight() - 18);
-    prevButton.setBounds (centre.removeFromLeft (30));
-    centre.removeFromLeft (4);
-    nextButton.setBounds (centre.removeFromRight (30));
-    centre.removeFromRight (4);
-    saveButton.setBounds (centre.removeFromRight (30));
-    centre.removeFromRight (4);
-    presetArea = centre;
+    // Centre group: undo redo   A/B Copy   < preset >   Save
+    auto c = getLocalBounds().withTrimmedTop (8).withTrimmedBottom (8).withSizeKeepingCentre (600, r.getHeight()).translated (60, 0);
+    undoButton.setBounds (c.removeFromLeft (30).withSizeKeepingCentre (26, 26));
+    c.removeFromLeft (6);
+    redoButton.setBounds (c.removeFromLeft (30).withSizeKeepingCentre (26, 26));
+    c.removeFromLeft (24);
+    abButton.setBounds (c.removeFromLeft (38));
+    c.removeFromLeft (6);
+    copyButton.setBounds (c.removeFromLeft (44));
+    c.removeFromLeft (24);
+    saveButton.setBounds (c.removeFromRight (44));
+    c.removeFromRight (10);
+    prevButton.setBounds (c.removeFromLeft (24).withSizeKeepingCentre (22, 22));
+    nextButton.setBounds (c.removeFromRight (24).withSizeKeepingCentre (22, 22));
+    presetArea = c;
 }
 
 void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& t = Theme::get();
-    auto r = getLocalBounds().toFloat();
 
-    // Bar background
-    g.setGradientFill (juce::ColourGradient (t.bg2, 0.0f, 0.0f, t.bg1, 0.0f, r.getBottom(), false));
-    g.fillRect (r);
-    g.setColour (t.stroke);
-    g.fillRect (r.removeFromBottom (1.0f));
-    g.setColour (juce::Colours::white.withAlpha (0.035f));
-    g.fillRect (getLocalBounds().toFloat().removeFromTop (1.0f));
-
-    // Brand mark: two offset rings in accent gradient + wordmark
+    // Curved logo tab in the top-left corner (lighter, translucent), like a tab grown out of the frame.
     {
-        auto b = brandArea.toFloat();
-        auto mark = b.removeFromLeft (b.getHeight()).reduced (3.0f);
-        juce::ColourGradient grad (t.accent, mark.getX(), mark.getY(), t.accent2, mark.getRight(), mark.getBottom(), false);
-        g.setGradientFill (grad);
-        const float d = mark.getHeight() * 0.72f;
-        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getX(), mark.getY()), 2.0f);
-        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getRight() - d, mark.getBottom() - d), 2.0f);
+        const float w = 330.0f, h = (float) getHeight() + 6.0f;
+        juce::Path tab;
+        tab.startNewSubPath (0.0f, 0.0f);
+        tab.lineTo (w, 0.0f);
+        tab.cubicTo (w - 46.0f, 0.0f, w - 40.0f, h, w - 96.0f, h);
+        tab.lineTo (26.0f, h);
+        tab.quadraticTo (0.0f, h, 0.0f, h - 26.0f);
+        tab.closeSubPath();
 
-        b.removeFromLeft (10.0f);
-        g.setColour (t.text);
-        g.setFont (fonts::make (17.0f, fonts::Weight::bold, 0.02f));
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillPath (tab, juce::AffineTransform::translation (0.0f, 2.0f));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0.0f, 0.0f,
+                                                 juce::Colours::white.withAlpha (0.04f), 0.0f, h, false));
+        g.fillPath (tab);
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.strokePath (tab, juce::PathStrokeType (1.0f));
+    }
+
+    // Brand: mark + wordmark
+    {
+        auto b = brandArea.toFloat().withTrimmedLeft (22.0f);
+        auto mark = b.removeFromLeft (34.0f).withSizeKeepingCentre (30.0f, 30.0f);
+        juce::ColourGradient grad (t.accent2, mark.getX(), mark.getY(), t.accent, mark.getRight(), mark.getBottom(), false);
+        g.setGradientFill (grad);
+        const float d = mark.getHeight() * 0.7f;
+        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getX(), mark.getY()), 2.2f);
+        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getRight() - d, mark.getBottom() - d), 2.2f);
+
+        b.removeFromLeft (12.0f);
+        g.setColour (t.text.withAlpha (0.9f));
+        g.setFont (fonts::make (19.0f, fonts::Weight::bold, 0.04f));
         const juce::String st ("ST");
         const float w = fonts::stringWidth (g.getCurrentFont(), st);
         g.drawText (st, b, juce::Justification::centredLeft, false);
-        g.setColour (t.textDim);
-        g.setFont (fonts::make (17.0f, fonts::Weight::regular, 0.02f));
-        g.drawText (product.toUpperCase(), b.withTrimmedLeft (w + 6.0f), juce::Justification::centredLeft, false);
+        g.setColour (t.text.withAlpha (0.75f));
+        g.setFont (fonts::make (22.0f, fonts::Weight::regular, 0.02f));
+        g.drawText (product, b.withTrimmedLeft (w + 8.0f), juce::Justification::centredLeft, false);
     }
 
-    // Preset field
+    // Preset name (text only)
     {
         auto p = presetArea.toFloat();
         const bool over = isMouseOver() && presetArea.contains (getMouseXYRelative());
-        g.setColour (over ? t.bg4 : t.bg1);
-        g.fillRoundedRectangle (p, t.radius - 1.0f);
-        g.setColour (t.stroke);
-        g.drawRoundedRectangle (p.reduced (0.5f), t.radius - 1.0f, 1.0f);
-
         auto name = proc.presets.getCurrentName();
-        g.setColour (t.text);
-        g.setFont (fonts::medium (13.5f));
-        auto textArea = p.reduced (12.0f, 0.0f);
-        icons::draw (g, icons::Icon::chevronDown, textArea.removeFromRight (14.0f).withSizeKeepingCentre (12.0f, 12.0f), t.textDim, 1.8f);
-        g.drawText (name, textArea, juce::Justification::centred, true);
+        g.setColour (over ? t.text : t.text.withAlpha (0.9f));
+        g.setFont (fonts::medium (15.0f));
+        g.drawText (name, p, juce::Justification::centred, true);
 
         if (modified)
         {
             const float tw = fonts::stringWidth (g.getCurrentFont(), name);
-            const float x = juce::jmin (textArea.getRight() - 4.0f, textArea.getCentreX() + tw * 0.5f + 7.0f);
-            g.setColour (t.accent);
-            g.fillEllipse (x - 2.5f, p.getCentreY() - 2.5f, 5.0f, 5.0f);
+            g.setColour (t.accent2);
+            g.fillEllipse (p.getCentreX() + tw * 0.5f + 6.0f, p.getCentreY() - 2.5f, 5.0f, 5.0f);
         }
     }
 }
@@ -411,13 +409,18 @@ void EditorBase::paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
 {
     const auto& t = Theme::get();
     auto r = area.toFloat();
-    g.setGradientFill (juce::ColourGradient (t.bg1, r.getCentreX(), r.getY(), t.bg0, r.getCentreX(), r.getBottom(), false));
+
+    // The whole window is the "display": warm, deep red at the top falling to near-black.
+    juce::ColourGradient grad (t.displayTop, r.getCentreX(), r.getY(), t.bg0, r.getCentreX(), r.getBottom(), false);
+    grad.addColour (0.45, t.displayTop.interpolatedWith (t.bg0, 0.55f));
+    grad.addColour (0.75, t.bg1);
+    g.setGradientFill (grad);
     g.fillRect (r);
 
-    // faint accent bloom top-centre
-    juce::ColourGradient bloom (t.accent.withAlpha (0.05f), r.getCentreX(), r.getY() + 40.0f,
-                                juce::Colours::transparentBlack, r.getCentreX(), r.getY() + r.getHeight() * 0.7f, true);
-    g.setGradientFill (bloom);
+    // soft vignette at the sides
+    juce::ColourGradient vignette (juce::Colours::transparentBlack, r.getCentreX(), r.getY() + r.getHeight() * 0.35f,
+                                   juce::Colours::black.withAlpha (0.35f), r.getX(), r.getY() + r.getHeight() * 0.35f, true);
+    g.setGradientFill (vignette);
     g.fillRect (r);
 
     g.setTiledImageFill (grain, 0, 0, 1.0f);

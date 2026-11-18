@@ -236,6 +236,128 @@ namespace paint
         g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
+    void greyButton (juce::Graphics& g, juce::Rectangle<float> r, float radius, bool hover, bool down, bool on)
+    {
+        const auto& t = Theme::get();
+        auto top = t.buttonTop, bottom = t.buttonBottom;
+        if (hover) { top = top.brighter (0.12f); bottom = bottom.brighter (0.10f); }
+        if (down)  { std::swap (top, bottom); }
+
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (r.translated (0.0f, 1.0f).expanded (0.5f), radius + 0.5f);
+        g.setGradientFill (juce::ColourGradient (top, 0.0f, r.getY(), bottom, 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle (r, radius);
+        g.setColour (juce::Colours::white.withAlpha (0.16f));
+        g.drawLine (r.getX() + radius, r.getY() + 0.75f, r.getRight() - radius, r.getY() + 0.75f, 1.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.drawRoundedRectangle (r.reduced (0.25f), radius, 0.75f);
+
+        if (on)
+        {
+            g.setColour (t.accent.withAlpha (0.35f));
+            g.fillRoundedRectangle (r, radius);
+        }
+    }
+
+    void pillHandle (juce::Graphics& g, juce::Rectangle<float> r, bool hover, bool active)
+    {
+        const auto& t = Theme::get();
+        const float rad = juce::jmin (r.getHeight(), r.getWidth()) * 0.32f;
+
+        // shadow
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillRoundedRectangle (r.translated (0.0f, 1.5f).expanded (0.5f), rad + 0.5f);
+
+        auto top = t.knobLight.darker (0.12f), bottom = t.knobDark;
+        if (hover || active) { top = top.brighter (0.15f); bottom = bottom.brighter (0.12f); }
+        g.setGradientFill (juce::ColourGradient (top, 0.0f, r.getY(), bottom, 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle (r, rad);
+
+        g.setColour (juce::Colours::white.withAlpha (0.35f));
+        g.drawLine (r.getX() + rad, r.getY() + 0.8f, r.getRight() - rad, r.getY() + 0.8f, 1.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.drawRoundedRectangle (r.reduced (0.25f), rad, 0.75f);
+
+        // centre dash
+        const bool vertical = r.getHeight() > r.getWidth();
+        auto c = r.getCentre();
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        if (vertical) g.fillRect (c.x - 0.75f, c.y - r.getHeight() * 0.28f, 1.5f, r.getHeight() * 0.56f);
+        else          g.fillRect (c.x - r.getWidth() * 0.28f, c.y - 0.5f, r.getWidth() * 0.56f, 1.25f);
+        g.setColour (juce::Colours::white.withAlpha (0.25f));
+        if (vertical) g.fillRect (c.x + 0.75f, c.y - r.getHeight() * 0.28f, 0.75f, r.getHeight() * 0.56f);
+        else          g.fillRect (c.x - r.getWidth() * 0.28f, c.y + 0.75f, r.getWidth() * 0.56f, 0.75f);
+    }
+
+    void knobDisc (juce::Graphics& g, juce::Point<float> c, float R, float angle, bool hover)
+    {
+        const auto& t = Theme::get();
+        auto body = juce::Rectangle<float> (R * 2.0f, R * 2.0f).withCentre (c);
+
+        // drop shadow
+        for (int i = 3; i >= 1; --i)
+        {
+            const float f = (float) i / 3.0f;
+            g.setColour (juce::Colours::black.withAlpha (0.18f * (1.0f - f) + 0.05f));
+            g.fillEllipse (body.expanded (R * 0.10f * f).translated (0.0f, R * 0.12f * f));
+        }
+
+        auto light = t.knobLight, dark = t.knobDark;
+        if (hover) { light = light.brighter (0.08f); dark = dark.brighter (0.08f); }
+        g.setGradientFill (juce::ColourGradient (light, c.x - R * 0.5f, c.y - R, dark, c.x + R * 0.4f, c.y + R, false));
+        g.fillEllipse (body);
+
+        // subtle concave face
+        g.setGradientFill (juce::ColourGradient (dark.withAlpha (0.25f), c.x, c.y - R, light.withAlpha (0.18f), c.x, c.y + R, false));
+        g.fillEllipse (body.reduced (R * 0.14f));
+
+        // rim
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.drawEllipse (body.reduced (0.4f), 0.9f);
+        g.setColour (juce::Colours::white.withAlpha (0.28f));
+        juce::Path rimLight;
+        rimLight.addCentredArc (c.x, c.y, R - 1.0f, R - 1.0f, 0.0f, -1.2f, 1.2f, true);
+        g.strokePath (rimLight, juce::PathStrokeType (0.9f));
+
+        // white crescent pointer: a bright circle near the rim, clipped to the body
+        g.saveState();
+        juce::Path clip;
+        clip.addEllipse (body.reduced (0.8f));
+        g.reduceClipRegion (clip);
+        const auto dot = c.getPointOnCircumference (R * 0.86f, angle);
+        g.setColour (juce::Colours::white.withAlpha (0.96f));
+        g.fillEllipse (juce::Rectangle<float> (R * 0.78f, R * 0.78f).withCentre (dot));
+        g.restoreState();
+
+        // fine dark tick through the crescent
+        const auto p0 = c.getPointOnCircumference (R * 0.62f, angle);
+        const auto p1 = c.getPointOnCircumference (R * 0.94f, angle);
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.drawLine ({ p0, p1 }, juce::jmax (1.0f, R * 0.055f));
+    }
+
+    void connectorDot (juce::Graphics& g, juce::Point<float> c, float r, juce::Colour col, bool hover)
+    {
+        g.setColour (col.withAlpha (hover ? 0.35f : 0.18f));
+        g.fillEllipse (juce::Rectangle<float> (r * 2.8f, r * 2.8f).withCentre (c));
+        g.setColour (juce::Colour (0xff141015));
+        g.fillEllipse (juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c));
+        g.setColour (col);
+        g.drawEllipse (juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c).reduced (0.6f), juce::jmax (1.2f, r * 0.28f));
+        g.fillEllipse (juce::Rectangle<float> (r * 0.85f, r * 0.85f).withCentre (c));
+    }
+
+    void lightTrail (juce::Graphics& g, const juce::Path& p, juce::Colour col, float width)
+    {
+        const int layers = 7;
+        for (int i = layers; i >= 1; --i)
+        {
+            const float f = (float) i / (float) layers;
+            g.setColour (col.withAlpha (0.045f * (1.2f - f)));
+            g.strokePath (p, juce::PathStrokeType (width * (0.4f + 2.6f * f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+
     void caption (juce::Graphics& g, const juce::String& s, juce::Rectangle<float> r, juce::Colour c,
                   juce::Justification j, float height)
     {

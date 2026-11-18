@@ -52,9 +52,9 @@ private:
     juce::String product;
     IconButton undoButton { icons::Icon::undo, "Undo" }, redoButton { icons::Icon::redo, "Redo" };
     IconButton prevButton { icons::Icon::chevronLeft, "Previous preset" }, nextButton { icons::Icon::chevronRight, "Next preset" };
-    IconButton saveButton { icons::Icon::save, "Save preset" };
-    PillButton aButton { "A" }, bButton { "B" };
-    IconButton copyButton { icons::Icon::copy, "Copy current state to the other slot" };
+    FlatButton abButton { "A", "Switch between compare slots A and B" };
+    FlatButton copyButton { "Copy", "Copy the current slot to the other one" };
+    FlatButton saveButton { "Save", "Save preset" };
     IconButton settingsButton { icons::Icon::gear, "Settings" };
     juce::Rectangle<int> presetArea, brandArea;
     bool modified = false;
@@ -87,7 +87,7 @@ public:
     void relayout();
     float getScale() const noexcept { return scale; }
 
-    static constexpr int headerHeight = 48;
+    static constexpr int headerHeight = 56;
 
 protected:
     ProcessorBase& processorBase;
