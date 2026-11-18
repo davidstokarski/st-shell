@@ -3,14 +3,7 @@
 namespace st
 {
 
-/** What a knob should show for modulation (all values normalised 0..1). */
-struct ModulationDisplay
-{
-    bool active = false;
-    float lo = 0.0f, hi = 0.0f;   // modulation range around the base value
-    float current = 0.0f;         // live modulated value
-    juce::Colour colour;
-};
+// st::ModulationDisplay (what a knob shows for modulation) lives in mod/ModTypes.h.
 
 /** Base for controls bound directly to a host parameter (gestures, undo, host context menu). */
 class ParameterControl : public juce::Component, public juce::SettableTooltipClient
@@ -49,8 +42,11 @@ private:
 
     Drag vertically (shift = fine), double-click or alt-click resets, cmd/ctrl-click
     types a value, mouse wheel nudges, right-click gives the host + ST menu.
+
+    Modulation: drop target for modulation sources dragged from st::ModulationPanel
+    (wired by st::ModulationBinder through onModulationDropped).
 */
-class Knob : public ParameterControl, private juce::Timer
+class Knob : public ParameterControl, public juce::DragAndDropTarget, private juce::Timer
 {
 public:
     enum class Size { large, medium, small, mini };
@@ -68,6 +64,20 @@ public:
 
     /** Supply this to draw modulation rings; polled at ~30 Hz while set. */
     void setModulationSource (std::function<ModulationDisplay()> fn);
+
+    /** When set, the knob accepts modulation drags (description "stmod:<sourceIndex>[:<argb>]")
+        and calls this with the source index on drop. */
+    std::function<void (int sourceIndex)> onModulationDropped;
+    /** Faint ring hinting that the knob is a drop target while a modulation source is dragged. */
+    void setModulationDropHint (bool show, juce::Colour = {});
+    /** Parses a modulation drag description. Returns false if `desc` isn't one. */
+    static bool parseModulationDrag (const juce::var& desc, int& sourceIndex, juce::Colour& colour);
+    static juce::String makeModulationDragDescription (int sourceIndex, juce::Colour);
+
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
     void paint (juce::Graphics&) override;
     void mouseEnter (const juce::MouseEvent&) override { hovering = true; repaint(); }
@@ -91,6 +101,8 @@ private:
     juce::Point<float> lastDragPos;
     std::function<ModulationDisplay()> modSource;
     ModulationDisplay modState;
+    bool modDropHover = false, modDropHint = false;
+    juce::Colour modDropColour;
     std::unique_ptr<juce::TextEditor> textEntry;
 
     void timerCallback() override;

@@ -80,6 +80,11 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
     void setScale (float scale);
+
+    /** Lays the content out. Layout is deferred until the subclass is fully constructed:
+        call this at the end of your editor's constructor (it also happens automatically
+        on the next message-loop tick). */
+    void relayout();
     float getScale() const noexcept { return scale; }
 
     static constexpr int headerHeight = 48;
@@ -110,6 +115,7 @@ private:
         EditorBase& owner;
     };
 
+    bool layoutReady = false;
     const int designW, designH;
     float scale = 1.0f;
     Content content;

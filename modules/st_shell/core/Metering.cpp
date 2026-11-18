@@ -123,6 +123,7 @@ SpectrumAnalyzer::SpectrumAnalyzer (AnalyzerSource& s, Options o) : source (s), 
     fftData.assign ((size_t) fftSize * 2, 0.0f);
     binDb.assign ((size_t) fftSize / 2 + 1, opts.floorDb);
     levels.assign ((size_t) opts.numDisplayPoints, opts.floorDb);
+    targets.assign ((size_t) opts.numDisplayPoints, opts.floorDb);
     freqs.resize ((size_t) opts.numDisplayPoints);
     scratch.resize (8192);
 
@@ -190,18 +191,17 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
 
     const float binHz = (float) (sr / fftSize);
 
+    // 1) Per display point: power-average the bins it covers (or interpolate when narrower than a bin).
     for (int i = 0; i < opts.numDisplayPoints; ++i)
     {
         const float f = freqs[(size_t) i];
         const float fLo = (i > 0 ? std::sqrt (f * freqs[(size_t) i - 1]) : f);
         const float fHi = (i < opts.numDisplayPoints - 1 ? std::sqrt (f * freqs[(size_t) i + 1]) : f);
-
         const float bLo = fLo / binHz, bHi = fHi / binHz;
         float db;
 
         if (bHi - bLo < 1.0f)
         {
-            // Interpolate between bins (cubic-ish via linear in dB is fine for display).
             const float pos = juce::jlimit (0.0f, (float) (numBins - 2), f / binHz);
             const int i0 = (int) pos;
             const float frac = pos - (float) i0;
@@ -210,16 +210,32 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
         else
         {
             const int b0 = juce::jlimit (0, numBins - 1, (int) std::ceil (bLo));
-            const int b1 = juce::jlimit (0, numBins - 1, (int) std::floor (bHi));
-            float mx = opts.floorDb;
-            for (int b = b0; b <= b1; ++b) mx = juce::jmax (mx, binDb[(size_t) b]);
-            db = mx;
+            const int b1 = juce::jlimit (b0, numBins - 1, (int) std::floor (bHi));
+            double power = 0.0;
+            for (int b = b0; b <= b1; ++b) power += std::pow (10.0, binDb[(size_t) b] * 0.1);
+            db = (float) (10.0 * std::log10 (juce::jmax (1.0e-14, power / (double) (b1 - b0 + 1))));
         }
 
         if (f > sr * 0.5) db = opts.floorDb;
+        targets[(size_t) i] = db + opts.slopeDbPerOct * std::log2 (f / 1000.0f);
+    }
 
-        db += opts.slopeDbPerOct * std::log2 (f / 1000.0f);
+    // 2) Fractional-octave smoothing across display points (keeps the curve calm and readable).
+    for (int pass = 0; pass < opts.smoothingPasses; ++pass)
+    {
+        float prev = targets[0];
+        for (int i = 1; i < opts.numDisplayPoints - 1; ++i)
+        {
+            const float cur = targets[(size_t) i];
+            targets[(size_t) i] = 0.25f * prev + 0.5f * cur + 0.25f * targets[(size_t) i + 1];
+            prev = cur;
+        }
+    }
 
+    // 3) Ballistics
+    for (int i = 0; i < opts.numDisplayPoints; ++i)
+    {
+        const float db = targets[(size_t) i];
         auto& l = levels[(size_t) i];
         if (db > l) l += (db - l) * opts.attack;
         else        l = juce::jmax (db, l - fall);

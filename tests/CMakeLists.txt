@@ -23,3 +23,31 @@ add_custom_target(run_st_dsp_tests
     COMMAND st_dsp_tests
     DEPENDS st_dsp_tests
     COMMENT "Running ST DSP tests")
+
+# ---------------------------------------------------------------------------
+# Modulation tests (st::mod + modulation UI smoke test). Separate console app.
+juce_add_console_app(StModTests PRODUCT_NAME "ST Mod Tests")
+
+target_sources(StModTests PRIVATE ModTests.cpp)
+target_compile_features(StModTests PRIVATE cxx_std_20)
+
+target_compile_definitions(StModTests PRIVATE
+    JUCE_MODAL_LOOPS_PERMITTED=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1)
+
+target_link_libraries(StModTests
+    PRIVATE
+        st::st_shell
+        st_shell_resources
+        juce::juce_dsp
+        juce::juce_audio_utils
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+add_custom_target(run_st_mod_tests
+    COMMAND StModTests
+    DEPENDS StModTests
+    COMMENT "Running ST modulation tests")

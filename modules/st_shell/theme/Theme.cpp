@@ -18,7 +18,8 @@ namespace fonts
 {
     juce::Typeface::Ptr typeface (Weight w)
     {
-        static juce::Typeface::Ptr faces[4];
+        // Intentionally leaked: must outlive JUCE's typeface cache at shutdown.
+        static auto* faces = new juce::Typeface::Ptr[4];
         auto& slot = faces[(int) w];
 
         if (slot == nullptr)

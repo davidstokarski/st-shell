@@ -70,6 +70,7 @@ struct SpectrumAnalyzerOptions
     float releaseDbPerSec = 42.0f;  // fall speed
     float attack = 0.65f;           // 0..1 rise smoothing
     float floorDb = -120.0f;
+    int smoothingPasses = 3;        // ~1/6-octave smoothing at 300 points
 };
 
 /** UI-side FFT analyser. Call update() from a timer; read display levels. */
@@ -96,7 +97,7 @@ private:
     AnalyzerSource& source;
     Options opts;
     std::unique_ptr<juce::dsp::FFT> fft;
-    std::vector<float> ring, window, fftData, binDb, levels, freqs, scratch;
+    std::vector<float> ring, window, fftData, binDb, levels, targets, freqs, scratch;
     int ringPos = 0, fftSize = 0, newSamples = 0;
     double lastSampleRate = 0.0;
     void rebuildMapping (double sr);

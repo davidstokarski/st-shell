@@ -360,6 +360,11 @@ EditorBase::EditorBase (ProcessorBase& p, int w, int h)
     scale = juce::jlimit (0.6f, 2.0f, p.getUiScale());
     setSize (juce::roundToInt ((float) designW * scale), juce::roundToInt ((float) designH * scale));
     setWantsKeyboardFocus (true);
+
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<EditorBase> (this)]
+    {
+        if (safe != nullptr && ! safe->layoutReady) safe->relayout();
+    });
 }
 
 EditorBase::~EditorBase()
@@ -387,8 +392,17 @@ void EditorBase::paint (juce::Graphics& g)
     g.fillAll (Theme::get().bg0);
 }
 
+void EditorBase::relayout()
+{
+    layoutReady = true;
+    content.resized();
+}
+
 void EditorBase::Content::resized()
 {
+    if (! owner.layoutReady)
+        return;   // subclass not constructed yet - layout() is pure virtual here
+
     owner.header.setBounds (getLocalBounds().removeFromTop (headerHeight));
     owner.layout (getLocalBounds().withTrimmedTop (headerHeight));
 }

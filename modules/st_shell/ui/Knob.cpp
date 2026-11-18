@@ -101,6 +101,68 @@ void Knob::setModulationSource (std::function<ModulationDisplay()> fn)
     else { stopTimer(); modState = {}; repaint(); }
 }
 
+void Knob::setModulationDropHint (bool show, juce::Colour c)
+{
+    if (show == modDropHint && (c == modDropColour || ! show)) return;
+    modDropHint = show;
+    if (show) modDropColour = c;
+    repaint();
+}
+
+juce::String Knob::makeModulationDragDescription (int sourceIndex, juce::Colour c)
+{
+    return "stmod:" + juce::String (sourceIndex) + ":" + c.toString();
+}
+
+bool Knob::parseModulationDrag (const juce::var& desc, int& sourceIndex, juce::Colour& c)
+{
+    if (! desc.isString()) return false;
+    const auto s = desc.toString();
+    if (! s.startsWith ("stmod:")) return false;
+
+    juce::StringArray parts;
+    parts.addTokens (s.fromFirstOccurrenceOf ("stmod:", false, false), ":", {});
+    if (parts.isEmpty() || ! parts[0].containsOnly ("0123456789") || parts[0].isEmpty()) return false;
+
+    sourceIndex = parts[0].getIntValue();
+    c = parts.size() > 1 ? juce::Colour::fromString (parts[1]) : juce::Colour();
+    return true;
+}
+
+bool Knob::isInterestedInDragSource (const SourceDetails& d)
+{
+    int index = 0;
+    juce::Colour c;
+    return onModulationDropped != nullptr && isEnabled() && parseModulationDrag (d.description, index, c);
+}
+
+void Knob::itemDragEnter (const SourceDetails& d)
+{
+    int index = 0;
+    juce::Colour c;
+    if (parseModulationDrag (d.description, index, c))
+        modDropColour = c;
+    modDropHover = true;
+    repaint();
+}
+
+void Knob::itemDragExit (const SourceDetails&)
+{
+    modDropHover = false;
+    repaint();
+}
+
+void Knob::itemDropped (const SourceDetails& d)
+{
+    modDropHover = false;
+    repaint();
+
+    int index = 0;
+    juce::Colour c;
+    if (onModulationDropped && parseModulationDrag (d.description, index, c))
+        onModulationDropped (index);
+}
+
 void Knob::timerCallback()
 {
     if (! modSource) return;
@@ -186,6 +248,31 @@ void Knob::paint (juce::Graphics& g)
         g.fillEllipse (juce::Rectangle<float> (arcW * 1.3f, arcW * 1.3f).withCentre (p));
     }
 
+    // Modulation drop target highlight
+    if (modDropHover || modDropHint)
+    {
+        const float mr = modSource ? arcR + arcW * 1.45f : arcR;
+        const auto mc = modDropColour.isTransparent() ? t.modulation : modDropColour;
+
+        juce::Path ring;
+        ring.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, startA, endA, true);
+
+        if (modDropHover)
+        {
+            g.setColour (mc.withAlpha (0.10f));
+            g.fillEllipse (dial.reduced (0.5f));
+            paint::glowStroke (g, ring, mc, arcW * 0.8f, arcW * 3.0f);
+        }
+        else
+        {
+            juce::Path dashed;
+            const float dashes[] = { arcW * 1.2f, arcW * 1.4f };
+            juce::PathStrokeType (arcW * 0.6f).createDashedStroke (dashed, ring, dashes, 2);
+            g.setColour (mc.withAlpha (0.45f));
+            g.fillPath (dashed);
+        }
+    }
+
     // Body
     {
         auto body = juce::Rectangle<float> (bodyR * 2.0f, bodyR * 2.0f).withCentre (centre);
@@ -224,7 +311,12 @@ void Knob::paint (juce::Graphics& g)
         const bool showValue = dragging || hovering || showValueAlways || textEntry != nullptr;
         const float h = size == Size::small ? 10.0f : 11.0f;
 
-        if (showValue)
+        if (modDropHover)
+        {
+            paint::caption (g, "+ Modulate", textArea, modDropColour.isTransparent() ? t.modulation : modDropColour,
+                            juce::Justification::centred, h);
+        }
+        else if (showValue)
         {
             g.setColour (t.text);
             g.setFont (fonts::semibold (h + 1.0f));

@@ -152,7 +152,7 @@ namespace paint
             juce::Path sheen;
             sheen.addRoundedRectangle (r.reduced (0.5f), radius);
             g.saveState();
-            g.reduceClipRegion (r.removeFromTop (juce::jmin (r.getHeight(), radius * 3.0f)).toNearestInt());
+            g.reduceClipRegion (r.withHeight (juce::jmin (r.getHeight(), radius * 3.0f)).toNearestInt());
             g.setGradientFill (juce::ColourGradient (t.highlight, r.getX(), r.getY(), juce::Colours::transparentWhite,
                                                      r.getX(), r.getY() + radius * 3.0f, false));
             g.strokePath (sheen, juce::PathStrokeType (1.0f));
