@@ -403,17 +403,17 @@ void EditorBase::paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
 {
     // The backdrop never changes, but it sits behind everything that animates: render it once
     // (at the current physical resolution) and blit it afterwards.
-    const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     const auto full = getContent().getLocalBounds();
 
-    if (backdrop.isNull() || std::abs (scale - backdropScale) > 0.01f
-        || backdrop.getWidth() != juce::roundToInt ((float) full.getWidth() * scale))
+    if (backdrop.isNull() || std::abs (pixelScale - backdropScale) > 0.01f
+        || backdrop.getWidth() != juce::roundToInt ((float) full.getWidth() * pixelScale))
     {
-        backdropScale = scale;
-        backdrop = juce::Image (juce::Image::RGB, juce::roundToInt ((float) full.getWidth() * scale),
-                                juce::roundToInt ((float) full.getHeight() * scale), false);
+        backdropScale = pixelScale;
+        backdrop = juce::Image (juce::Image::RGB, juce::roundToInt ((float) full.getWidth() * pixelScale),
+                                juce::roundToInt ((float) full.getHeight() * pixelScale), false);
         juce::Graphics bg (backdrop);
-        bg.addTransform (juce::AffineTransform::scale (scale));
+        bg.addTransform (juce::AffineTransform::scale (pixelScale));
 
         const auto& t = Theme::get();
         auto r = full.toFloat();

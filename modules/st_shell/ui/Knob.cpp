@@ -227,11 +227,11 @@ Knob::Zone Knob::zoneAt (juce::Point<float> p) const
     return Zone::value;
 }
 
-void Knob::setRimParameter (juce::RangedAudioParameter* p, const juce::String& label, bool showLR)
+void Knob::setRimParameter (juce::RangedAudioParameter* p, const juce::String& rimText, bool showLR)
 {
     rimAttachment.reset();
     rimParam = p;
-    rimLabel = label;
+    rimLabel = rimText;
     rimLR = showLR;
     if (p != nullptr)
     {

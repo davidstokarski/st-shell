@@ -28,6 +28,14 @@ public:
     /** Session-only UI state (editor scale, selected tab...). Message thread only. Not part of presets. */
     juce::ValueTree uiState { "UI" };
 
+    /** Parameter by ID (asserts if it doesn't exist). */
+    juce::RangedAudioParameter& param (const juce::String& id)
+    {
+        auto* p = apvts.getParameter (id);
+        jassert (p != nullptr);
+        return *p;
+    }
+
     float getUiScale() const { return (float) (double) uiState.getProperty ("scale", 1.0); }
     void setUiScale (float s) { uiState.setProperty ("scale", s, nullptr); }
 

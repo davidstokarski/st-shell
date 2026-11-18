@@ -142,10 +142,10 @@ void showMenu (juce::PopupMenu menu, juce::Component* target, std::function<void
     juce::Component::SafePointer<juce::Component> safe (target);
     const bool hadTarget = target != nullptr;
 
-    juce::MessageManager::callAsync ([menu = std::move (menu), safe, hadTarget, cb = std::move (onResult), atMouse, mouse]() mutable
+    juce::MessageManager::callAsync ([pending = std::move (menu), safe, hadTarget, cb = std::move (onResult), atMouse, mouse]() mutable
     {
         if (hadTarget && safe == nullptr) return;
-        showNow (std::move (menu), safe.getComponent(), std::move (cb), atMouse, mouse);
+        showNow (std::move (pending), safe.getComponent(), std::move (cb), atMouse, mouse);
     });
 }
 

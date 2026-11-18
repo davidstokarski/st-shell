@@ -145,7 +145,7 @@ void SpectrumAnalyzer::rebuildMapping (double sr) { lastSampleRate = sr; }
 bool SpectrumAnalyzer::update (double elapsedSeconds)
 {
     const double sr = source.getSampleRate();
-    if (sr != lastSampleRate)
+    if (std::abs (sr - lastSampleRate) > 0.5)
         rebuildMapping (sr);
 
     // Pull everything available into the ring buffer.
@@ -169,7 +169,7 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
         for (auto& l : levels)
         {
             const float n = juce::jmax (opts.floorDb, l - fall);
-            changed |= (n != l);
+            changed |= std::abs (n - l) > 1.0e-4f;
             l = n;
         }
         return changed;
