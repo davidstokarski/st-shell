@@ -360,6 +360,30 @@ namespace paint
         }
     }
 
+    void fadedLine (juce::Graphics& g, juce::Point<float> a, juce::Point<float> b, juce::Colour c, float thickness, float fade)
+    {
+        fade = juce::jlimit (0.001f, 0.5f, fade);
+        juce::ColourGradient grad (c.withAlpha (0.0f), a, c.withAlpha (0.0f), b, false);
+        grad.addColour (fade, c);
+        grad.addColour (1.0 - fade, c);
+        g.setGradientFill (grad);
+        juce::Path p;
+        p.startNewSubPath (a);
+        p.lineTo (b);
+        g.strokePath (p, juce::PathStrokeType (thickness, juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
+    }
+
+    void tray (juce::Graphics& g, juce::Rectangle<float> r, float cornerRadius)
+    {
+        juce::Path bar;
+        bar.addRoundedRectangle (r.getX() + 6.0f, r.getY(), r.getWidth() - 12.0f, r.getHeight() + cornerRadius + 2.0f,
+                                 cornerRadius, cornerRadius, true, true, false, false);
+        g.setColour (juce::Colours::black.withAlpha (0.42f));
+        g.fillPath (bar);
+        fadedLine (g, { r.getX() + 24.0f, r.getY() + 0.5f }, { r.getRight() - 24.0f, r.getY() + 0.5f },
+                   juce::Colours::white.withAlpha (0.09f), 1.0f, 0.15f);
+    }
+
     void caption (juce::Graphics& g, const juce::String& s, juce::Rectangle<float> r, juce::Colour c,
                   juce::Justification j, float height)
     {

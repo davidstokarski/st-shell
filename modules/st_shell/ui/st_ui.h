@@ -11,3 +11,5 @@
 #include "ModulationTrails.h"
 
 #include "NativeMenu.h"
+
+#include "Popover.h"

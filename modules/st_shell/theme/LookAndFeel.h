@@ -41,6 +41,12 @@ namespace paint
     /** Soft blurred "light trail" along a path (for modulation connections). */
     void lightTrail (juce::Graphics&, const juce::Path&, juce::Colour, float width);
 
+    /** A 1px line that fades in and out at its ends (the signature "lines never stop abruptly" look).
+        `fade` = fraction of the length used for each fade (0..0.5). Works for any direction. */
+    void fadedLine (juce::Graphics&, juce::Point<float> from, juce::Point<float> to, juce::Colour, float thickness = 1.0f, float fade = 0.2f);
+    /** Footer tray: dark bar with rounded upper corners and a faded edge light. */
+    void tray (juce::Graphics&, juce::Rectangle<float> bounds, float cornerRadius = 18.0f);
+
     /** Draw text with ST caption style (uppercase, tracked). */
     void caption (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Colour, juce::Justification = juce::Justification::centred, float height = 10.5f);
 }

@@ -6,3 +6,5 @@
 #include "ModulationBinder.cpp"
 #include "ModulationStrip.cpp"
 #include "ModulationTrails.cpp"
+
+#include "Popover.cpp"
