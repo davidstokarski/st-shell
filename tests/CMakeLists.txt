@@ -51,3 +51,29 @@ add_custom_target(run_st_mod_tests
     COMMAND StModTests
     DEPENDS StModTests
     COMMENT "Running ST modulation tests")
+
+# ---------------------------------------------------------------------------
+# Reverb tests (st::dsp::Reverb). Separate console app; `StReverbTests --render <dir>` writes WAVs.
+juce_add_console_app(StReverbTests PRODUCT_NAME "ST Reverb Tests")
+
+target_sources(StReverbTests PRIVATE ReverbTests.cpp)
+target_compile_features(StReverbTests PRIVATE cxx_std_20)
+
+target_compile_definitions(StReverbTests PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1)
+
+target_link_libraries(StReverbTests
+    PRIVATE
+        st::st_shell
+        juce::juce_dsp
+        juce::juce_audio_formats
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+add_custom_target(run_st_reverb_tests
+    COMMAND StReverbTests
+    DEPENDS StReverbTests
+    COMMENT "Running ST reverb tests")

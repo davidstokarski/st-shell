@@ -21,3 +21,4 @@
 #include "Oversampler.h"
 #include "Delay.h"
 #include "Envelope.h"
+#include "Reverb.h"

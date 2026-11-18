@@ -4,3 +4,4 @@
 #include "Crossover.cpp"
 #include "Dynamics.cpp"
 #include "Oversampler.cpp"
+#include "Reverb.cpp"

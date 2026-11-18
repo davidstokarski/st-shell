@@ -363,6 +363,13 @@ void Knob::paint (juce::Graphics& g)
 
     paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
 
+    // Hover: a faint light ring around the disc (FabFilter-style affordance)
+    if ((hovering || dragging) && hoverZone == Zone::value && enabled)
+    {
+        g.setColour (juce::Colours::white.withAlpha (dragging ? 0.10f : 0.06f));
+        g.drawEllipse (juce::Rectangle<float> ((discR + 2.5f) * 2.0f, (discR + 2.5f) * 2.0f).withCentre (centre), 1.2f);
+    }
+
     // Modulation range arc (outside the knob) + live position
     if (modSource && modState.active)
     {
