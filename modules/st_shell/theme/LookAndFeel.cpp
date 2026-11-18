@@ -163,6 +163,32 @@ namespace paint
         g.drawRoundedRectangle (r.reduced (0.5f), radius, t.hairline);
     }
 
+    void glass (juce::Graphics& g, juce::Rectangle<float> r, float radius, juce::Colour tint, float opacity)
+    {
+        const auto& t = Theme::get();
+        softShadow (g, r, radius, 18.0f, 0.55f);
+
+        const auto base = t.bg2.interpolatedWith (tint.isTransparent() ? t.bg2 : tint, 0.06f);
+        g.setGradientFill (juce::ColourGradient (base.brighter (0.06f).withAlpha (opacity), r.getX(), r.getY(),
+                                                 base.darker (0.15f).withAlpha (juce::jmin (1.0f, opacity + 0.06f)), r.getX(), r.getBottom(), false));
+        g.fillRoundedRectangle (r, radius);
+
+        // Edge light: brighter along the top, fading out downwards.
+        juce::Path edge;
+        edge.addRoundedRectangle (r.reduced (0.5f), radius);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.13f), r.getX(), r.getY(),
+                                                 juce::Colours::white.withAlpha (0.025f), r.getX(), r.getY() + juce::jmin (r.getHeight(), 60.0f), false));
+        g.strokePath (edge, juce::PathStrokeType (1.0f));
+
+        if (! tint.isTransparent())
+        {
+            // faint coloured glow along the top edge
+            g.setGradientFill (juce::ColourGradient (tint.withAlpha (0.10f), r.getCentreX(), r.getY(),
+                                                     tint.withAlpha (0.0f), r.getCentreX(), r.getY() + 46.0f, false));
+            g.fillRoundedRectangle (r.withHeight (juce::jmin (r.getHeight(), 46.0f)), radius);
+        }
+    }
+
     void well (juce::Graphics& g, juce::Rectangle<float> r, float radius)
     {
         const auto& t = Theme::get();

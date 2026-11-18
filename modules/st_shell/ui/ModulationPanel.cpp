@@ -357,13 +357,14 @@ public:
         division.setBounds (divisionArea.withTrimmedBottom (15).withSizeKeepingCentre (rateSlot.getWidth() - 6, 26));
         phase.setBounds (controls.removeFromLeft (64).withSizeKeepingCentre (58, 66));
 
-        controls.removeFromLeft (8);
-        auto col = controls.withSizeKeepingCentre (controls.getWidth(), 66).withTrimmedBottom (4);
-        shape.setBounds (col.removeFromTop (28));
-        col.removeFromTop (6);
-        sync.setBounds (col.removeFromLeft (col.getWidth() / 2 - 3));
-        col.removeFromLeft (6);
-        unipolar.setBounds (col);
+        // One calm row of compact controls instead of full-width blocks.
+        controls.removeFromLeft (12);
+        auto row = controls.withSizeKeepingCentre (controls.getWidth(), 28).translated (0, -8);
+        shape.setBounds (row.removeFromLeft (juce::jmin (190, row.getWidth() / 2)));
+        row.removeFromLeft (10);
+        sync.setBounds (row.removeFromLeft (64));
+        row.removeFromLeft (6);
+        unipolar.setBounds (row.removeFromLeft (56));
     }
 
     void paint (juce::Graphics& g) override
@@ -824,15 +825,18 @@ void ModulationPanel::paint (juce::Graphics& g)
 {
     const auto& t = Theme::get();
     auto r = getLocalBounds().toFloat().reduced (0.5f);
-    g.setGradientFill (juce::ColourGradient (t.bg1.brighter (0.05f), 0.0f, r.getY(), t.bg1.darker (0.1f), 0.0f, r.getBottom(), false));
-    g.fillRoundedRectangle (r, t.radiusLarge);
-    g.setGradientFill (juce::ColourGradient (t.highlight, 0.0f, r.getY(), t.highlight.withAlpha (0.0f), 0.0f, r.getY() + t.radiusLarge * 3.0f, false));
-    g.drawRoundedRectangle (r.reduced (0.5f), t.radiusLarge, 1.0f);
-    g.setColour (t.stroke.withAlpha (0.9f));
-    g.drawRoundedRectangle (r, t.radiusLarge, t.hairline);
+    if (! borderless)
+    {
+        g.setGradientFill (juce::ColourGradient (t.bg1.brighter (0.05f), 0.0f, r.getY(), t.bg1.darker (0.1f), 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle (r, t.radiusLarge);
+        g.setGradientFill (juce::ColourGradient (t.highlight, 0.0f, r.getY(), t.highlight.withAlpha (0.0f), 0.0f, r.getY() + t.radiusLarge * 3.0f, false));
+        g.drawRoundedRectangle (r.reduced (0.5f), t.radiusLarge, 1.0f);
+        g.setColour (t.stroke.withAlpha (0.9f));
+        g.drawRoundedRectangle (r, t.radiusLarge, t.hairline);
+    }
 
     // tab row divider
-    g.setColour (t.strokeSoft);
+    g.setColour (borderless ? t.strokeSoft.withAlpha (0.5f) : t.strokeSoft);
     g.fillRect ((float) tabArea.getX(), (float) tabArea.getBottom() + 3.0f, (float) tabArea.getWidth(), 1.0f);
 
     // group separators between source kinds

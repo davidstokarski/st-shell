@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Animation.h"
 #include "Knob.h"
 #include "Controls.h"
 #include "Meters.h"

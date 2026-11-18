@@ -39,6 +39,9 @@ public:
 
     static constexpr int preferredHeight = 232;
 
+    /** Borderless mode blends the panel into the editor backdrop (no card, softer dividers). */
+    void setBorderless (bool b) { borderless = b; repaint(); }
+
 private:
     friend class modulation_detail::SourceTab;
 
@@ -60,6 +63,7 @@ private:
     void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModulationPanel)
+    bool borderless = false;
 };
 
 } // namespace st

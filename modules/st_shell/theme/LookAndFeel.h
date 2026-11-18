@@ -22,6 +22,8 @@ namespace paint
 {
     /** Rounded panel with subtle vertical gradient, top sheen and hairline border. */
     void panel (juce::Graphics&, juce::Rectangle<float>, float radius, juce::Colour base, bool raised = true);
+    /** Floating translucent "glass" surface for controls that hover over displays. */
+    void glass (juce::Graphics&, juce::Rectangle<float>, float radius, juce::Colour tint = {}, float opacity = 0.84f);
     /** Recessed well (display areas, meters). */
     void well (juce::Graphics&, juce::Rectangle<float>, float radius);
     /** Soft blurred drop shadow approximated by stacked translucent rounded rects (cheap, no image). */
