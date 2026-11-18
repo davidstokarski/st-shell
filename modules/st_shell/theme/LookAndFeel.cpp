@@ -239,12 +239,14 @@ namespace paint
     void greyButton (juce::Graphics& g, juce::Rectangle<float> r, float radius, bool hover, bool down, bool on)
     {
         const auto& t = Theme::get();
+        r = r.withTrimmedBottom (2.0f).reduced (0.5f, 0.0f);   // room for the shadow inside our bounds
+        radius = juce::jmin (radius, r.getHeight() * 0.5f);
         auto top = t.buttonTop, bottom = t.buttonBottom;
         if (hover) { top = top.brighter (0.12f); bottom = bottom.brighter (0.10f); }
         if (down)  { std::swap (top, bottom); }
 
-        g.setColour (juce::Colours::black.withAlpha (0.45f));
-        g.fillRoundedRectangle (r.translated (0.0f, 1.0f).expanded (0.5f), radius + 0.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.fillRoundedRectangle (r.translated (0.0f, 1.5f), radius);
         g.setGradientFill (juce::ColourGradient (top, 0.0f, r.getY(), bottom, 0.0f, r.getBottom(), false));
         g.fillRoundedRectangle (r, radius);
         g.setColour (juce::Colours::white.withAlpha (0.16f));

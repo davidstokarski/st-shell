@@ -401,24 +401,38 @@ void EditorBase::Content::resized()
 
 void EditorBase::paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    const auto& t = Theme::get();
-    auto r = area.toFloat();
+    // The backdrop never changes, but it sits behind everything that animates: render it once
+    // (at the current physical resolution) and blit it afterwards.
+    const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const auto full = getContent().getLocalBounds();
 
-    // The whole window is the "display": warm, deep red at the top falling to near-black.
-    juce::ColourGradient grad (t.displayTop, r.getCentreX(), r.getY(), t.bg0, r.getCentreX(), r.getBottom(), false);
-    grad.addColour (0.45, t.displayTop.interpolatedWith (t.bg0, 0.55f));
-    grad.addColour (0.75, t.bg1);
-    g.setGradientFill (grad);
-    g.fillRect (r);
+    if (backdrop.isNull() || std::abs (scale - backdropScale) > 0.01f
+        || backdrop.getWidth() != juce::roundToInt ((float) full.getWidth() * scale))
+    {
+        backdropScale = scale;
+        backdrop = juce::Image (juce::Image::RGB, juce::roundToInt ((float) full.getWidth() * scale),
+                                juce::roundToInt ((float) full.getHeight() * scale), false);
+        juce::Graphics bg (backdrop);
+        bg.addTransform (juce::AffineTransform::scale (scale));
 
-    // soft vignette at the sides
-    juce::ColourGradient vignette (juce::Colours::transparentBlack, r.getCentreX(), r.getY() + r.getHeight() * 0.35f,
-                                   juce::Colours::black.withAlpha (0.35f), r.getX(), r.getY() + r.getHeight() * 0.35f, true);
-    g.setGradientFill (vignette);
-    g.fillRect (r);
+        const auto& t = Theme::get();
+        auto r = full.toFloat();
+        juce::ColourGradient grad (t.displayTop, r.getCentreX(), r.getY(), t.bg0, r.getCentreX(), r.getBottom(), false);
+        grad.addColour (0.45, t.displayTop.interpolatedWith (t.bg0, 0.55f));
+        grad.addColour (0.75, t.bg1);
+        bg.setGradientFill (grad);
+        bg.fillRect (r);
 
-    g.setTiledImageFill (grain, 0, 0, 1.0f);
-    g.fillRect (r);
+        juce::ColourGradient vignette (juce::Colours::transparentBlack, r.getCentreX(), r.getY() + r.getHeight() * 0.35f,
+                                       juce::Colours::black.withAlpha (0.35f), r.getX(), r.getY() + r.getHeight() * 0.35f, true);
+        bg.setGradientFill (vignette);
+        bg.fillRect (r);
+
+        bg.setTiledImageFill (grain, 0, 0, 1.0f);
+        bg.fillRect (r);
+    }
+
+    g.drawImage (backdrop, area.toFloat(), juce::RectanglePlacement::stretchToFit);
 }
 
 bool EditorBase::keyPressed (const juce::KeyPress& key)

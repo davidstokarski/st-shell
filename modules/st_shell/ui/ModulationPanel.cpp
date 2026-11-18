@@ -386,7 +386,7 @@ private:
     void updateSyncVisibility()
     {
         const bool synced = rawValue (matrix, id, mod::ids::sync) >= 0.5f;
-        if (division.isVisible() != synced)
+        if (division.isVisible() != synced || rate.isVisible() == synced)
         {
             division.setVisible (synced);
             rate.setVisible (! synced);

@@ -441,7 +441,7 @@ juce::Rectangle<float> Fader::getTrack() const
 {
     auto r = getLocalBounds().toFloat();
     if (caption.isNotEmpty()) r.removeFromBottom (14.0f);
-    return r.reduced (0.0f, 9.0f);
+    return r.reduced (0.0f, 11.0f);
 }
 
 juce::Rectangle<float> Fader::getCapBounds() const
@@ -540,39 +540,43 @@ void FlatButton::paintButton (juce::Graphics& g, bool over, bool down)
     if (down) col = col.withMultipliedAlpha (0.8f);
 
     g.setFont (fonts::medium (fontHeight));
-    auto txt = getButtonText();
+    const auto& f = g.getCurrentFont();
+    const auto txt = getButtonText();
+    const float wp = fonts::stringWidth (f, dimPrefix), wt = fonts::stringWidth (f, txt), ws = fonts::stringWidth (f, dimSuffix);
+    const float arrowW = arrow ? 14.0f : 0.0f;
+
+    // Everything is laid out as one centred run: [prefix][text][suffix][arrow]
+    auto area = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), wp + wt + ws + arrowW), r.getHeight());
+
+    if (wp > 0.0f)
+    {
+        g.setColour (t.textFaint);
+        g.drawText (dimPrefix, area.removeFromLeft (wp), juce::Justification::centredLeft, false);
+    }
+
+    g.setColour (col);
+    auto textArea = area.removeFromLeft (wt);
+    g.drawText (txt, textArea, juce::Justification::centredLeft, false);
+
+    if (ws > 0.0f)
+    {
+        g.setColour (t.textFaint);
+        g.drawText (dimSuffix, area.removeFromLeft (ws), juce::Justification::centredLeft, false);
+    }
 
     if (arrow)
     {
-        auto a = r.removeFromRight (14.0f);
+        const auto c = area.removeFromLeft (arrowW).getCentre().translated (2.0f, 0.0f);
         juce::Path tri;
-        const auto c = a.getCentre();
-        tri.addTriangle (c.x - 4.0f, c.y - 2.0f, c.x + 4.0f, c.y - 2.0f, c.x, c.y + 3.0f);
+        tri.addTriangle (c.x - 3.5f, c.y - 1.5f, c.x + 3.5f, c.y - 1.5f, c.x, c.y + 2.5f);
         g.setColour (col.withMultipliedAlpha (0.8f));
         g.fillPath (tri);
     }
 
-    if (dimPrefix.isNotEmpty() || dimSuffix.isNotEmpty())
-    {
-        const auto& f = g.getCurrentFont();
-        const float wp = fonts::stringWidth (f, dimPrefix), wt = fonts::stringWidth (f, txt), ws = fonts::stringWidth (f, dimSuffix);
-        auto area = r.withSizeKeepingCentre (wp + wt + ws, r.getHeight());
-        g.setColour (t.textFaint);
-        g.drawText (dimPrefix, area.removeFromLeft (wp), juce::Justification::centredLeft, false);
-        g.setColour (col);
-        g.drawText (txt, area.removeFromLeft (wt), juce::Justification::centredLeft, false);
-        g.setColour (t.textFaint);
-        g.drawText (dimSuffix, area, juce::Justification::centredLeft, false);
-        return;
-    }
-
-    g.setColour (col);
-    g.drawText (txt, r, juce::Justification::centred, false);
-
     if (on)
     {
         g.setColour (t.accent);
-        g.fillRoundedRectangle (juce::Rectangle<float> (14.0f, 2.0f).withCentre ({ r.getCentreX(), r.getBottom() - 2.0f }), 1.0f);
+        g.fillRoundedRectangle (juce::Rectangle<float> (14.0f, 2.0f).withCentre ({ textArea.getCentreX(), r.getBottom() - 2.0f }), 1.0f);
     }
 }
 

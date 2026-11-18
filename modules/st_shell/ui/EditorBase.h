@@ -120,7 +120,8 @@ private:
     float scale = 1.0f;
     Content content;
     std::unique_ptr<juce::TooltipWindow> tooltips;
-    juce::Image grain;
+    juce::Image grain, backdrop;
+    float backdropScale = 0.0f;
 };
 
 } // namespace st

@@ -48,7 +48,16 @@ private:
     double lastTs = 0.0, lastVBlankMs = 0.0, lastTimerMs = 0.0;
     juce::VBlankAttachment attachment;
 
-    void fire (double dt) { if (callback) callback (dt); }
+    double pending = 0.0;
+
+    void fire (double dt)
+    {
+        pending += dt;
+        if (pending < 1.0 / 62.0) return;   // never more than ~60 updates per second
+        const double step = juce::jmin (pending, 0.1);
+        pending = 0.0;
+        if (callback) callback (step);
+    }
 
     void timerCallback() override
     {
