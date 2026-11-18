@@ -77,7 +77,7 @@ void ParameterControl::showContextMenu (std::function<void (juce::PopupMenu&)> a
         }
     }
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (180));
+    ::st::showMenu (menu, this, {}, true);
 }
 
 //==============================================================================
@@ -203,22 +203,77 @@ juce::Point<float> Knob::getModulationAnchor() const
     return { textArea.getCentreX() + w * 0.5f + 8.0f, textArea.getCentreY() };
 }
 
+Knob::Geometry Knob::geometry() const
+{
+    auto dial = getDialBounds();
+    Geometry gm;
+    gm.centre = dial.getCentre();
+    gm.R = dial.getWidth() * 0.5f;
+    gm.modW = juce::jmax (2.0f, gm.R * 0.07f);
+    gm.outerR = gm.R - gm.modW - 1.5f;
+    gm.rimW = look == Look::ringed ? gm.outerR * 0.17f : 0.0f;
+    gm.discR = gm.outerR - gm.rimW - (look == Look::ringed ? 1.0f : 0.0f);
+    return gm;
+}
+
+Knob::Zone Knob::zoneAt (juce::Point<float> p) const
+{
+    const auto gm = geometry();
+    const float d = p.getDistanceFrom (gm.centre);
+    if (modSource && modState.active && onModulationDepthDrag && d >= gm.outerR - 0.5f && d <= gm.R + 4.0f)
+        return Zone::modDepth;
+    if (look == Look::ringed && rimParam != nullptr && d >= gm.discR - 1.0f && d < gm.outerR + (modState.active ? -0.5f : 4.0f))
+        return Zone::rim;
+    return Zone::value;
+}
+
+void Knob::setRimParameter (juce::RangedAudioParameter* p, const juce::String& label, bool showLR)
+{
+    rimAttachment.reset();
+    rimParam = p;
+    rimLabel = label;
+    rimLR = showLR;
+    if (p != nullptr)
+    {
+        rimAttachment = std::make_unique<juce::ParameterAttachment> (*p, [this] (float plain)
+        {
+            rimNorm = rimParam->convertTo0to1 (plain);
+            repaint();
+        }, undo);
+        rimAttachment->sendInitialUpdate();
+    }
+    repaint();
+}
+
+void Knob::mouseMove (const juce::MouseEvent& e)
+{
+    const auto z = zoneAt (e.position);
+    if (z != hoverZone)
+    {
+        hoverZone = z;
+        setMouseCursor (z == Zone::value ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::UpDownLeftRightResizeCursor);
+        repaint();
+    }
+}
+
 void Knob::paint (juce::Graphics& g)
 {
     const auto& t = Theme::get();
     const bool enabled = isEnabled();
-    auto dial = getDialBounds();
-    const auto centre = dial.getCentre();
-    const float R = dial.getWidth() * 0.5f;
+    const auto gm = geometry();
+    const auto centre = gm.centre;
+    const float R = gm.R;
 
     constexpr float startA = -2.45f, endA = 2.45f;   // radians from 12 o'clock
     const float valueA = startA + (endA - startA) * normValue;
 
-    const float modW = juce::jmax (2.0f, R * 0.07f);
-    const float outerR = R - modW - 1.5f;                       // leave room for the modulation arc
+    const float modW = gm.modW;
+    const float outerR = gm.outerR;
     const bool ringed = look == Look::ringed;
-    const float rimW = ringed ? outerR * 0.17f : 0.0f;
-    const float discR = outerR - rimW - (ringed ? 1.0f : 0.0f);
+    const float rimW = gm.rimW;
+    const float discR = gm.discR;
+    const bool rimActive = rimParam != nullptr && ((hovering && hoverZone == Zone::rim) || (dragging && dragZone == Zone::rim));
+    const bool modActive = (hovering && hoverZone == Zone::modDepth) || (dragging && dragZone == Zone::modDepth);
 
     // Modulation-drop hint
     if (modDropHint || modDropHover)
@@ -238,7 +293,7 @@ void Knob::paint (juce::Graphics& g)
         g.setColour (juce::Colours::black.withAlpha (0.5f));
         g.fillEllipse (juce::Rectangle<float> (outerR * 2.0f + 2.0f, outerR * 2.0f + 2.0f).withCentre (centre.translated (0.0f, 1.5f)));
 
-        const auto rimCol = enabled ? colour : t.textFaint;
+        const auto rimCol = (enabled ? colour : t.textFaint).brighter (rimActive ? 0.3f : 0.0f);
         g.setGradientFill (juce::ColourGradient (rimCol.brighter (0.25f), centre.x, centre.y - outerR,
                                                  rimCol.darker (0.45f), centre.x, centre.y + outerR, false));
         g.strokePath (rim, juce::PathStrokeType (rimW));
@@ -261,6 +316,49 @@ void Knob::paint (juce::Graphics& g)
         lit.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, startA, valueA, true);
         g.setColour (juce::Colours::white.withAlpha (0.22f));
         g.strokePath (lit, juce::PathStrokeType (rimW * 0.55f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+
+        // Rim control: L / R markers spread around the value
+        if (rimParam != nullptr)
+        {
+            const float s = (rimNorm - 0.5f) * 2.0f;                    // -1..1
+            const float spread = s * 0.55f;                              // radians
+            const float aL = juce::jlimit (startA, endA, valueA - spread);
+            const float aR = juce::jlimit (startA, endA, valueA + spread);
+
+            if (std::abs (s) > 0.01f)
+            {
+                juce::Path span;
+                span.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (aL, aR), juce::jmax (aL, aR), true);
+                g.setColour (juce::Colours::white.withAlpha (0.55f));
+                g.strokePath (span, juce::PathStrokeType (rimW * 0.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+
+            for (int k = 0; k < 2; ++k)
+            {
+                const float a = k == 0 ? aL : aR;
+                const auto p0 = centre.getPointOnCircumference (outerR - rimW + 1.0f, a);
+                const auto p1 = centre.getPointOnCircumference (outerR - 0.5f, a);
+                g.setColour (juce::Colours::white);
+                g.drawLine ({ p0, p1 }, 2.2f);
+
+                if (rimLR && (rimActive || std::abs (s) > 0.01f))
+                {
+                    const auto lp = centre.getPointOnCircumference (outerR + 7.0f, a);
+                    g.setFont (fonts::semibold (8.5f));
+                    g.setColour (t.text.withAlpha (0.9f));
+                    g.drawText (k == 0 ? "L" : "R", juce::Rectangle<float> (10.0f, 10.0f).withCentre (lp), juce::Justification::centred, false);
+                }
+            }
+        }
+
+        if (rimParam != nullptr && rimLR)
+        {
+            // Static L / R hint at the bottom corners, like a stereo knob
+            g.setFont (fonts::semibold (10.0f));
+            g.setColour (t.text.withAlpha (rimActive ? 0.9f : 0.55f));
+            g.drawText ("L", juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre.getPointOnCircumference (R + 2.0f, startA - 0.25f)), juce::Justification::centred, false);
+            g.drawText ("R", juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre.getPointOnCircumference (R + 2.0f, endA + 0.25f)), juce::Justification::centred, false);
+        }
     }
 
     paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
@@ -275,8 +373,14 @@ void Knob::paint (juce::Graphics& g)
 
         juce::Path arc;
         arc.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, a0, a1 + 0.0001f, true);
-        g.setColour (mc.withAlpha (0.25f));
-        g.strokePath (arc, juce::PathStrokeType (modW + 2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // faint full-travel track so the arc reads as a grabbable ring
+        juce::Path track;
+        track.addCentredArc (centre.x, centre.y, mr, mr, 0.0f, startA, endA, true);
+        g.setColour (mc.withAlpha (modActive ? 0.18f : 0.07f));
+        g.strokePath (track, juce::PathStrokeType (modW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        g.setColour (mc.withAlpha (modActive ? 0.45f : 0.25f));
+        g.strokePath (arc, juce::PathStrokeType (modW + (modActive ? 4.0f : 2.0f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (mc);
         g.strokePath (arc, juce::PathStrokeType (modW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
@@ -296,6 +400,20 @@ void Knob::paint (juce::Graphics& g)
         {
             paint::caption (g, "+ Modulate", textArea, modDropColour.isTransparent() ? t.modulation : modDropColour,
                             juce::Justification::centred, h);
+        }
+        else if (rimActive && rimParam != nullptr)
+        {
+            g.setColour (t.text);
+            g.setFont (fonts::semibold (h + 1.0f));
+            g.drawText (rimLabel + " " + rimParam->getCurrentValueAsText(), textArea.expanded (20.0f, 0.0f), juce::Justification::centred, false);
+        }
+        else if (modActive)
+        {
+            const auto mc = modState.colour.isTransparent() ? t.modulation : modState.colour;
+            g.setColour (mc);
+            g.setFont (fonts::semibold (h + 1.0f));
+            g.drawText ("Depth " + juce::String (juce::roundToInt ((modState.hi - modState.lo) * 100.0f)) + "%", textArea.expanded (20.0f, 0.0f),
+                        juce::Justification::centred, false);
         }
         else if (showValue)
         {
@@ -343,7 +461,17 @@ void Knob::mouseDown (const juce::MouseEvent& e)
 
     dragging = true;
     lastDragPos = e.position;
-    beginEdit();
+    dragZone = zoneAt (e.position);
+
+    if (dragZone == Zone::rim && rimAttachment != nullptr)
+        rimAttachment->beginGesture();
+    else if (dragZone == Zone::modDepth)
+    {
+        if (onModulationDepthBegin) onModulationDepthBegin();
+    }
+    else
+        beginEdit();
+
     e.source.enableUnboundedMouseMovement (true, false);
     repaint();
 }
@@ -357,26 +485,51 @@ void Knob::mouseDrag (const juce::MouseEvent& e)
 
     const float pixelsForFull = e.mods.isShiftDown() ? 1600.0f : 240.0f;
     const float d = (-delta.y + delta.x * 0.35f) / pixelsForFull;
-    if (d != 0.0f)
+    if (d == 0.0f) return;
+
+    if (dragZone == Zone::rim && rimAttachment != nullptr)
+    {
+        rimNorm = juce::jlimit (0.0f, 1.0f, rimNorm + d);
+        rimAttachment->setValueAsPartOfGesture (rimParam->convertFrom0to1 (rimNorm));
+    }
+    else if (dragZone == Zone::modDepth)
+    {
+        if (onModulationDepthDrag) onModulationDepthDrag (d);
+    }
+    else
     {
         normValue = juce::jlimit (0.0f, 1.0f, normValue + d);
         setNormalisedDuringEdit (normValue);
-        repaint();
     }
+    repaint();
 }
 
 void Knob::mouseUp (const juce::MouseEvent& e)
 {
     if (! dragging) return;
     dragging = false;
-    endEdit();
+
+    if (dragZone == Zone::rim && rimAttachment != nullptr)
+        rimAttachment->endGesture();
+    else if (dragZone == Zone::modDepth)
+    {
+        if (onModulationDepthEnd) onModulationDepthEnd();
+    }
+    else
+        endEdit();
+
+    dragZone = Zone::value;
     e.source.enableUnboundedMouseMovement (false, true);
     repaint();
 }
 
 void Knob::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu())
+    if (e.mods.isPopupMenu()) return;
+
+    if (zoneAt (e.position) == Zone::rim && rimAttachment != nullptr)
+        rimAttachment->setValueAsCompleteGesture (rimParam->convertFrom0to1 (rimParam->getDefaultValue()));
+    else
         resetToDefault();
 }
 

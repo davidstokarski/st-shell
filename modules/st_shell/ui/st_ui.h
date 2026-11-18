@@ -9,3 +9,5 @@
 #include "ModulationBinder.h"
 #include "ModulationStrip.h"
 #include "ModulationTrails.h"
+
+#include "NativeMenu.h"

@@ -96,6 +96,13 @@ void ModulationBinder::bind (Knob& knob, const juce::String& id)
 
     knob.setModulationSource ([m = &matrix, k = &knob, id] { return m->getDisplay (id, k->getNormalised()); });
     knob.onModulationDropped = [this, id] (int src) { createRouting (src, id); };
+    knob.onModulationDepthBegin = [this] { matrix.beginUndoTransaction ("Modulation depth"); };
+    knob.onModulationDepthDrag = [this, id] (float d)
+    {
+        for (auto& r : matrix.getRoutingsForTarget (id))
+            matrix.setRoutingDepth (r.source, id, juce::jlimit (-1.0f, 1.0f, r.depth + d));
+    };
+    knob.onModulationDepthEnd = nullptr;
     knob.extendContextMenu = [this, prev = b.previousMenu, id] (juce::PopupMenu& menu)
     {
         if (prev) prev (menu);
@@ -114,6 +121,8 @@ void ModulationBinder::unbind (Binding& b)
     {
         k->setModulationSource ({});
         k->onModulationDropped = nullptr;
+        k->onModulationDepthBegin = nullptr;
+        k->onModulationDepthDrag = nullptr;
         k->extendContextMenu = b.previousMenu;
         k->setModulationDropHint (false);
     }

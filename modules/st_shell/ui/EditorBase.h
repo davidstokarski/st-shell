@@ -87,7 +87,7 @@ public:
     void relayout();
     float getScale() const noexcept { return scale; }
 
-    static constexpr int headerHeight = 56;
+    static constexpr int headerHeight = 44;
 
 protected:
     ProcessorBase& processorBase;

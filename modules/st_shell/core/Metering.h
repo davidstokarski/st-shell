@@ -71,6 +71,7 @@ struct SpectrumAnalyzerOptions
     float attack = 0.65f;           // 0..1 rise smoothing
     float floorDb = -120.0f;
     int smoothingPasses = 3;        // ~1/6-octave smoothing at 300 points
+    int hopSize = 0;                // new samples needed per FFT (0 = fftSize / 8). Smaller = smoother motion.
 };
 
 /** UI-side FFT analyser. Call update() from a timer; read display levels. */

@@ -162,7 +162,7 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
 
     const float fall = (float) (opts.releaseDbPerSec * elapsedSeconds);
 
-    if (newSamples < fftSize / 8)
+    if (newSamples < (opts.hopSize > 0 ? opts.hopSize : fftSize / 8))
     {
         // No fresh data: let the display decay gracefully.
         bool changed = false;

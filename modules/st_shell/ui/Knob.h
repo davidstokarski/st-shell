@@ -63,6 +63,17 @@ public:
     void setLook (Look l) { look = l; repaint(); }
     /** Where modulation connections should attach (local coords, next to the caption). */
     juce::Point<float> getModulationAnchor() const;
+
+    /** Makes the coloured rim (ringed look) an editable second control, e.g. stereo spread or balance.
+        Dragging the rim edits `rimParam`; its value is shown as L / R markers around the rim. */
+    void setRimParameter (juce::RangedAudioParameter* rimParam, const juce::String& rimLabel, bool showLR = true);
+
+    /** Dragging the outer modulation arc adjusts modulation depth (wired by ModulationBinder). */
+    std::function<void()> onModulationDepthBegin;
+    std::function<void (float deltaNormalised)> onModulationDepthDrag;
+    std::function<void()> onModulationDepthEnd;
+
+    void mouseMove (const juce::MouseEvent&) override;
     void setShowValueAlways (bool b) { showValueAlways = b; repaint(); }
     /** Optional override for the displayed value text. */
     std::function<juce::String (float plainValue)> valueToText;
@@ -104,6 +115,18 @@ private:
     Size size = Size::medium;
     Look look = Look::classic;
     float getCaptionHeight() const noexcept;
+
+    struct Geometry { juce::Point<float> centre; float R, modW, outerR, rimW, discR; };
+    Geometry geometry() const;
+    enum class Zone { value, rim, modDepth };
+    Zone zoneAt (juce::Point<float>) const;
+    Zone dragZone = Zone::value, hoverZone = Zone::value;
+
+    juce::RangedAudioParameter* rimParam = nullptr;
+    std::unique_ptr<juce::ParameterAttachment> rimAttachment;
+    float rimNorm = 0.5f;
+    juce::String rimLabel;
+    bool rimLR = true;
     bool bipolar = false, hovering = false, dragging = false, showValueAlways = false;
     juce::Point<float> lastDragPos;
     std::function<ModulationDisplay()> modSource;

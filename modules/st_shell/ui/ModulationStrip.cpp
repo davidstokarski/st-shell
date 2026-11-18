@@ -321,9 +321,7 @@ public:
     void showMenu()
     {
         auto menu = strip.createSourceMenu (index);
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this)
-                                .withTargetScreenArea (localAreaToGlobal (getNameArea().toNearestInt()))
-                                .withMinimumWidth (140));
+        ::st::showMenu (menu, this, {}, true);
     }
 
 private:
@@ -577,9 +575,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override
     {
         auto menu = strip.createAddMenu();
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this)
-                                .withTargetScreenArea (localAreaToGlobal (getTileArea().toNearestInt()))
-                                .withMinimumWidth (150));
+        ::st::showMenu (menu, this, {}, true);
     }
 
 private:

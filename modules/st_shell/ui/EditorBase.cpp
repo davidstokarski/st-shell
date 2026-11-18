@@ -137,14 +137,14 @@ void HeaderBar::timerCallback()
 
 void HeaderBar::resized()
 {
-    auto r = getLocalBounds().withTrimmedTop (8).withTrimmedBottom (8);
-    brandArea = r.removeFromLeft (300);
+    auto r = getLocalBounds().withTrimmedTop (6).withTrimmedBottom (6);
+    brandArea = r.removeFromLeft (140);
 
     r.removeFromRight (14);
     settingsButton.setBounds (r.removeFromRight (28).withSizeKeepingCentre (28, 28));
 
     // Centre group: undo redo   A/B Copy   < preset >   Save
-    auto c = getLocalBounds().withTrimmedTop (8).withTrimmedBottom (8).withSizeKeepingCentre (600, r.getHeight()).translated (60, 0);
+    auto c = getLocalBounds().withTrimmedTop (6).withTrimmedBottom (6).withSizeKeepingCentre (600, r.getHeight());
     undoButton.setBounds (c.removeFromLeft (30).withSizeKeepingCentre (26, 26));
     c.removeFromLeft (6);
     redoButton.setBounds (c.removeFromLeft (30).withSizeKeepingCentre (26, 26));
@@ -164,45 +164,41 @@ void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& t = Theme::get();
 
-    // Curved logo tab in the top-left corner (lighter, translucent), like a tab grown out of the frame.
+    // Small curved logo tab tucked into the top-left corner.
     {
-        const float w = 330.0f, h = (float) getHeight() + 6.0f;
+        const float w = 132.0f, h = 30.0f;
         juce::Path tab;
         tab.startNewSubPath (0.0f, 0.0f);
         tab.lineTo (w, 0.0f);
-        tab.cubicTo (w - 46.0f, 0.0f, w - 40.0f, h, w - 96.0f, h);
-        tab.lineTo (26.0f, h);
-        tab.quadraticTo (0.0f, h, 0.0f, h - 26.0f);
+        tab.cubicTo (w - 16.0f, 0.0f, w - 14.0f, h, w - 34.0f, h);
+        tab.lineTo (12.0f, h);
+        tab.quadraticTo (0.0f, h, 0.0f, h - 12.0f);
         tab.closeSubPath();
 
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillPath (tab, juce::AffineTransform::translation (0.0f, 2.0f));
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0.0f, 0.0f,
+        g.setColour (juce::Colours::black.withAlpha (0.3f));
+        g.fillPath (tab, juce::AffineTransform::translation (0.0f, 1.0f));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.09f), 0.0f, 0.0f,
                                                  juce::Colours::white.withAlpha (0.04f), 0.0f, h, false));
         g.fillPath (tab);
-        g.setColour (juce::Colours::white.withAlpha (0.08f));
-        g.strokePath (tab, juce::PathStrokeType (1.0f));
-    }
+        g.setColour (juce::Colours::white.withAlpha (0.07f));
+        g.strokePath (tab, juce::PathStrokeType (0.8f));
 
-    // Brand: mark + wordmark
-    {
-        auto b = brandArea.toFloat().withTrimmedLeft (22.0f);
-        auto mark = b.removeFromLeft (34.0f).withSizeKeepingCentre (30.0f, 30.0f);
-        juce::ColourGradient grad (t.accent2, mark.getX(), mark.getY(), t.accent, mark.getRight(), mark.getBottom(), false);
-        g.setGradientFill (grad);
+        auto b = juce::Rectangle<float> (10.0f, 0.0f, w - 30.0f, h);
+        auto mark = b.removeFromLeft (16.0f).withSizeKeepingCentre (15.0f, 15.0f);
+        g.setGradientFill (juce::ColourGradient (t.accent2, mark.getX(), mark.getY(), t.accent, mark.getRight(), mark.getBottom(), false));
         const float d = mark.getHeight() * 0.7f;
-        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getX(), mark.getY()), 2.2f);
-        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getRight() - d, mark.getBottom() - d), 2.2f);
+        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getX(), mark.getY()), 1.4f);
+        g.drawEllipse (juce::Rectangle<float> (d, d).withPosition (mark.getRight() - d, mark.getBottom() - d), 1.4f);
 
-        b.removeFromLeft (12.0f);
-        g.setColour (t.text.withAlpha (0.9f));
-        g.setFont (fonts::make (19.0f, fonts::Weight::bold, 0.04f));
+        b.removeFromLeft (7.0f);
+        g.setColour (t.text.withAlpha (0.85f));
+        g.setFont (fonts::make (12.5f, fonts::Weight::bold, 0.05f));
         const juce::String st ("ST");
-        const float w = fonts::stringWidth (g.getCurrentFont(), st);
+        const float sw = fonts::stringWidth (g.getCurrentFont(), st);
         g.drawText (st, b, juce::Justification::centredLeft, false);
-        g.setColour (t.text.withAlpha (0.75f));
-        g.setFont (fonts::make (22.0f, fonts::Weight::regular, 0.02f));
-        g.drawText (product, b.withTrimmedLeft (w + 8.0f), juce::Justification::centredLeft, false);
+        g.setColour (t.text.withAlpha (0.65f));
+        g.setFont (fonts::make (13.5f, fonts::Weight::regular, 0.02f));
+        g.drawText (product, b.withTrimmedLeft (sw + 5.0f), juce::Justification::centredLeft, false);
     }
 
     // Preset name (text only)
@@ -211,7 +207,7 @@ void HeaderBar::paint (juce::Graphics& g)
         const bool over = isMouseOver() && presetArea.contains (getMouseXYRelative());
         auto name = proc.presets.getCurrentName();
         g.setColour (over ? t.text : t.text.withAlpha (0.9f));
-        g.setFont (fonts::medium (15.0f));
+        g.setFont (fonts::medium (14.0f));
         g.drawText (name, p, juce::Justification::centred, true);
 
         if (modified)
@@ -273,9 +269,7 @@ void HeaderBar::showPresetMenu()
     menu.addItem (revealId, "Show presets folder");
     menu.addItem (rescanId, "Rescan presets");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (presetArea))
-                                                  .withMinimumWidth (presetArea.getWidth()),
-                        [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
+    ::st::showMenu (menu, this, [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
     {
         if (safe == nullptr || result == 0) return;
         auto& pm2 = proc.presets;
@@ -285,7 +279,7 @@ void HeaderBar::showPresetMenu()
         else if (result == rescanId) pm2.rescanUserPresets();
         else pm2.loadPreset (result - 1);
         repaint();
-    });
+    }, true);
 }
 
 void HeaderBar::promptSave()
@@ -320,7 +314,7 @@ void HeaderBar::showSettingsMenu()
     menu.addSeparator();
     menu.addItem (juce::String (JucePlugin_Name) + "  v" + ST_PRODUCT_VERSION, false, false, [] {});
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&settingsButton).withMinimumWidth (200));
+    ::st::showMenu (menu, &settingsButton);
 }
 
 //==============================================================================

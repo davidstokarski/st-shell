@@ -284,8 +284,7 @@ void Dropdown::mouseDown (const juce::MouseEvent& e)
             menu.addItem (i + 1, c->choices[i], true, i == current);
 
     const int n = getNumChoices();
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()),
-                        [safe = juce::Component::SafePointer<Dropdown> (this), n] (int result)
+    ::st::showMenu (menu, this, [safe = juce::Component::SafePointer<Dropdown> (this), n] (int result)
                         {
                             if (safe != nullptr && result > 0)
                                 safe->setNormalisedAsGesture ((float) (result - 1) / (float) juce::jmax (1, n - 1));
