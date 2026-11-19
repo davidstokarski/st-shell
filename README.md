@@ -3,7 +3,7 @@
 Shared foundation for the ST family of audio plugins (JUCE 9, C++20, VST3 + AU on macOS): DSP building blocks,
 modulation, presets/state, and the design language that makes every ST plugin look and feel the same.
 
-Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). **Agents: start with [CLAUDE.md](CLAUDE.md).**
+Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). Also built on it: [ST EQ](https://github.com/davidstokarski/st-eq). **Agents: start with [CLAUDE.md](CLAUDE.md).**
 
 ## Docs
 
@@ -21,7 +21,7 @@ Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). **Agents: 
 | Layer | Contents |
 |---|---|
 | `core/` | parameter builders & formatters, meter + analyser feeds, FFT spectrum analyser |
-| `dsp/` | filters, phase-coherent crossover, upward/downward compressor, oversampler, delay, envelope follower, 8-type reverb |
+| `dsp/` | filters, analog-matched parametric EQ bands, partitioned FFT convolver, phase-coherent crossover, upward/downward compressor, oversampler, delay, envelope follower, 8-type reverb |
 | `mod/` | modulation matrix: tempo-synced LFOs, envelope followers, macros, routings saved in presets |
 | `state/` | `ProcessorBase` (APVTS + undo, presets, A/B, meters, analysers, UI state), preset manager |
 | `theme/` | colour tokens, Inter typeface, icons, painting helpers (knob discs, pill handles, faded lines, trays...), LookAndFeel |

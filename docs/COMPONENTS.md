@@ -18,7 +18,10 @@ Everything here is in namespace `st` unless noted. Paths are relative to `module
 
 | Control | Notes |
 |---|---|
-| `Knob (param, undo, label)` | `setSize (large/medium/small/mini)`, `setLook (classic/ringed)`, `setColour`, `setBipolar`, `setRimParameter (param, label)` (rim becomes a second control), `valueToText`. Modulation via `ModulationBinder`. |
+| `Knob (param, undo, label)` | `setSize (large/medium/small/mini)`, `setLook (classic/ringed/arc)`, `setColour`, `setBipolar`, `setRimParameter (param, label)` (rim becomes a second control), `valueToText`. Modulation via `ModulationBinder`. |
+| `Knob` arc look | `Look::arc`: dark disc with a value arc in the knob colour on the disc face (Pro-style band controls, ST EQ; colour = band colour). `setRecessed (true)` puts it in a dark well; the gap is the rim zone, where `RimStyle::range` draws a thick red span and live activity in yellow. Use `Size::mini` and draw captions yourself when they must overlap the well (ST EQ `BandIsland`). |
+| `Knob` gestures | Default: double-click resets, Cmd-click types a value, Alt-click resets. `Knob::setDoubleClickEntersValue (true)` (once, e.g. in the processor constructor) switches the whole plugin to Pro-style: double-click types, Cmd-click resets (ST EQ). Typed values go through the parameter's parser: `params::parseHz` accepts `1.5k` and note names (`A4`, `C#3+13`), `params::parseDb` (used by `dbAttributes`) accepts `-inf` and amplitude ratios (`2x` = +6 dB, `50%` = -6 dB). |
+| `Knob` rim styles | `setRimStyle (RimStyle::spread)` (default: L/R markers, stereo spread / pan) or `RimStyle::range`: the rim value is an offset in the main parameter's units (dynamic EQ range), drawn as a span from the value; `setRimActivitySource (fn)` adds live activity (e.g. current dynamic gain) in the warning colour. |
 | `Fader` | Vertical slot + pill cap; centre detent for bipolar params. |
 | `ToggleChip` | Bool param. Styles: default chip, `setGreyStyle` (bar buttons), `setFlatStyle` (footer text + indicator light), icon or text, `setInverted`. |
 | `Segmented` | Choice param as pills (`PRE/POST`, reverb types...). |
@@ -32,6 +35,8 @@ Everything here is in namespace `st` unless noted. Paths are relative to `module
 
 `MeterSource` (audio → UI peak/RMS), `LevelMeter`, `GainChangeMeter`, `AnalyzerSource` + `SpectrumAnalyzer`
 (Blackman-Harris FFT, fractional-octave smoothing, `hopSize` for smooth motion, `createPath`).
+`AnalyzerSource` also keeps a non-consuming history tap (`readLatest` / `getHistoryPosition`), so any number of
+readers — e.g. another instance's editor — can analyse it; `SpectrumAnalyzer::Options::nonConsuming` uses it.
 
 ## Modulation UI — `ui/ModulationStrip.h`, `ui/ModulationBinder.h`, `ui/ModulationTrails.h`, `ui/ModulationPanel.h`
 
@@ -41,7 +46,9 @@ depth drag, context menu), `ModulationTrails` (glow overlay), `ModulationPanel` 
 ## Painting helpers — `theme/LookAndFeel.h` (`st::paint::`)
 
 `knobDisc`, `pillHandle`, `greyButton`, `connectorDot`, `lightTrail`, `fadedLine`, `tray`, `glass`, `panel`, `well`,
-`softShadow`, `glowStroke`, `caption`. Icons: `st::icons::draw (g, Icon::..., area, colour)`.
+`softShadow`, `glowStroke`, `caption`. Icons: `st::icons::draw (g, Icon::..., area, colour)` — includes `pencil`,
+`headphones`, `scissors`, `stereoLink`, `bars`, `chevronsRight`, `chevronsLeft`, `sidechain`. Theme token `curve`: the main response curve of
+filter / EQ displays.
 
 ## DSP — `dsp/` (`st::dsp::`)
 
@@ -50,8 +57,20 @@ depth drag, context menu), `ModulationTrails` (glow overlay), `ModulationPanel` 
 | `Crossover` | Phase-coherent LR crossover, 1–8 bands, 12/24/48 dB/oct, smoothed frequencies, `getBandMagnitude` for UI. |
 | `UpDownCompressor` | Upward + downward compressor/expander (`depth` −1..1), static curve for UI, meters. |
 | `Oversampler` | 1–16x FIR, all factors prepared up front; switch on the message thread. |
+| `eq::designAnalog / designDigital`, `EqBandSpec`, `EqShape` | Parametric EQ bands (bell, shelves, cuts, notch, band pass, tilt shelf, flat tilt, all pass; 6–120 dB/oct, resonance). One analog prototype gives the exact analog response (drawing, FIR design) and analog-matched biquads (impulse-invariant poles, least-squares / matched-z numerators): no cramping near Nyquist. `hasGain / hasSlope / hasQ`. |
+| `EqCascade` | Up to 12 biquads (TDF-II, double) for one band, per-sample coefficient glide when the design changes (automation, dynamic EQ). |
+| `StftProcessor` | Streaming STFT (sqrt-Hann WOLA, hop N/4, latency N) with a per-frame callback that may modify the main channels' spectra; analysis-only side channels for detectors. Spectral dynamics, de-noising, spectral gates. |
+| `PartitionedConvolver` | Uniform partitioned FFT convolution, mono / diagonal / true-stereo 2x2 routing, latency = partition size. IRs written from one worker thread and swapped lock-free with a one-partition cross-fade. Linear-phase EQ, natural-phase correction, IR reverbs. |
 | `Reverb` | 8 types (Room, Chamber, Plate, Hall, Cathedral, Spring, Ambience, Bloom); runs at base rate internally when fed oversampled audio; `isSilent()`. |
 | `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `DelayLine`, `EnvelopeFollower`, `LinearSmoother` | Building blocks; per-sample APIs need the caller's `ScopedNoDenormals`. |
+
+## Cross-instance — `state/InstanceRegistry.h`
+
+`InstanceRegistry::get()` lists every instance of this plugin binary in the process (ProcessorBase registers itself).
+Each has `getInstanceNumber()`, the host's `getTrackName()` / `getTrackColour()` (from `updateTrackProperties`) and
+`getInstanceLabel()`. Listeners get `instancesChanged()` (async) and `instanceRemoved (p)` synchronously on the message
+thread before `p` is destroyed — drop every reference there. Hold instances via `juce::WeakReference<ProcessorBase>`.
+Used by ST EQ's instance list, collision display and EQ Match reference.
 
 ## Adding a component
 

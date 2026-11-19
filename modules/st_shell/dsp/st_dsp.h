@@ -10,6 +10,9 @@
 //   Oversampler.h  runtime-switchable juce::dsp::Oversampling wrapper
 //   Delay.h        integer DelayLine (latency compensation)
 //   Envelope.h     EnvelopeFollower
+//   EqDesign.h     analog-matched parametric EQ bands (bell/shelf/cut/notch/BP/tilt/AP), EqCascade
+//   Convolver.h    uniform partitioned FFT convolver (mono/diagonal/2x2), lock-free IR swap
+//   Stft.h         streaming STFT (sqrt-Hann WOLA, hop N/4) with per-frame spectral callback
 //
 // Denormal policy: block-level process() methods install juce::ScopedNoDenormals
 // themselves; per-sample processSample() calls expect the caller to have one in scope.
@@ -22,3 +25,6 @@
 #include "Delay.h"
 #include "Envelope.h"
 #include "Reverb.h"
+#include "EqDesign.h"
+#include "Convolver.h"
+#include "Stft.h"

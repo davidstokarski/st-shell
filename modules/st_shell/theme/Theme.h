@@ -41,6 +41,7 @@ struct Theme
     juce::Colour accent     { 0xffcf2f2c };   // plugin identity colour (rims, selection)
     juce::Colour accent2    { 0xffff6a55 };   // secondary identity colour
     juce::Colour spectrum   { 0xffd9a58c };   // analyser line (warm)
+    juce::Colour curve      { 0xfff3d9a4 };   // main response curve of filter / EQ displays (warm gold-white)
     juce::Colour modulation { 0xff4fd6e0 };   // default modulation colour
     juce::Colour positive   { 0xff5ee0a5 };
     juce::Colour warning    { 0xffffcc4d };

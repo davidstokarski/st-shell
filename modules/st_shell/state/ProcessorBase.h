@@ -60,11 +60,27 @@ public:
     /** Called on the message thread after state was restored from the host or a preset. */
     virtual void stateRestored() {}
 
+    //==============================================================================
+    /** Cross-instance identity (see InstanceRegistry): session number, host track name / colour. */
+    int getInstanceNumber() const noexcept { return instanceNumber; }
+    juce::String getTrackName() const;
+    juce::Colour getTrackColour() const;
+    /** Track name, or "<plugin> <n>" when the host doesn't report one. */
+    juce::String getInstanceLabel() const;
+    void updateTrackProperties (const TrackProperties&) override;
+    /** Leaves the instance registry now (call first thing in a subclass destructor if UI elsewhere may be
+        using subclass members of this instance). Safe to call twice. */
+    void unregisterInstance();
+
 protected:
     /** Call at the start of prepareToPlay to set up meters and analysers. */
     void prepareShell (double sampleRate);
 
 private:
+    int instanceNumber = 0;
+    mutable juce::CriticalSection trackLock;
+    TrackProperties track;
+
     JUCE_DECLARE_WEAK_REFERENCEABLE (ProcessorBase)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessorBase)
 };

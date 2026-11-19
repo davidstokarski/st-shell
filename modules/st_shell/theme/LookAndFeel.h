@@ -10,7 +10,8 @@ namespace icons
     {
         chevronLeft, chevronRight, chevronDown, chevronUp,
         undo, redo, gear, power, copy, plus, close, save, folder,
-        menu, dice, link, solo, mute, info, resize, swap, star, trash
+        menu, dice, link, solo, mute, info, resize, swap, star, trash,
+        pencil, headphones, scissors, stereoLink, bars, chevronsRight, chevronsLeft, sidechain, gears, tilt
     };
 
     juce::Path path (Icon);   // stroke path in a 24x24 box

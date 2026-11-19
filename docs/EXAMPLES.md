@@ -21,3 +21,15 @@ pattern is done in practice.
 | Editor: layout, gliding panel, cross-fades, popover placement, modulation strip/binder/trails, buffered caching | `Source/PluginEditor.cpp` |
 | Whole-plugin stress tests + PNG snapshot tool (incl. opening popovers) | `tests/PluginTests.cpp` |
 | Release packaging | `scripts/release.sh` |
+
+## ST EQ (`../st-eq`)
+
+| Pattern | Where |
+|---|---|
+| Fixed band slots with a `used` flag, undoable add / remove / copy / paste | `Source/PluginProcessor.cpp` |
+| Three phase modes on one engine; latency-aligned detectors and solo | `Source/dsp/Engine.cpp` |
+| Worker thread designing FIRs from parameter atomics, lock-free IR swap | `Source/dsp/FirWorker.cpp` |
+| Interactive EQ display: layered image caching, multi-selection, rubber band, spectrum grab, sketch | `Source/ui/EqDisplay.cpp` |
+| Band island (raised tab, recessed arc knob with dynamic-range rim), dynamics / match popovers | `Source/ui/Panels.cpp` |
+| Neutral theme override for a plugin | `Source/PluginProcessor.cpp` (constructor) |
+| Response-vs-analog tests per processing mode, UI paint benchmark | `tests/PluginTests.cpp` |

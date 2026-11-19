@@ -26,6 +26,25 @@ namespace
 
     NSString* toNS (const juce::String& s) { return [NSString stringWithUTF8String: s.toRawUTF8()]; }
 
+    /** Renders an item's Drawable into a 16 pt template image (macOS tints it for the menu's appearance). */
+    NSImage* toNSImage (const juce::Drawable& d)
+    {
+        constexpr int pts = 16, scale = 2;
+        juce::Image img (juce::Image::ARGB, pts * scale, pts * scale, true);
+        {
+            juce::Graphics g (img);
+            d.drawWithin (g, juce::Rectangle<float> (0.0f, 0.0f, (float) (pts * scale), (float) (pts * scale)),
+                          juce::RectanglePlacement::centred, 1.0f);
+        }
+        juce::MemoryOutputStream png;
+        juce::PNGImageFormat().writeImageToStream (img, png);
+        NSData* data = [NSData dataWithBytes: png.getData() length: png.getDataSize()];
+        NSImage* image = [[[NSImage alloc] initWithData: data] autorelease];
+        [image setSize: NSMakeSize (pts, pts)];
+        [image setTemplate: YES];
+        return image;
+    }
+
     NSMenu* build (const juce::PopupMenu& menu, id target, std::vector<const juce::PopupMenu::Item*>& leaves)
     {
         NSMenu* ns = [[[NSMenu alloc] initWithTitle: @""] autorelease];
@@ -59,6 +78,8 @@ namespace
             NSMenuItem* ni = [[[NSMenuItem alloc] initWithTitle: toNS (item.text) action: nil keyEquivalent: @""] autorelease];
             [ni setEnabled: item.isEnabled ? YES : NO];
             [ni setState: item.isTicked ? NSControlStateValueOn : NSControlStateValueOff];
+            if (item.image != nullptr)
+                [ni setImage: toNSImage (*item.image)];
 
             if (item.subMenu != nullptr)
             {
@@ -78,10 +99,12 @@ namespace
     }
 }
 
-static void showNow (juce::PopupMenu menu, juce::Component* target, std::function<void (int)> onResult, bool atMouse,
-                     juce::Point<float> mouseAtRequest)
+static void showNow (juce::PopupMenu menu, juce::Component* target, juce::Component* underMouse, std::function<void (int)> onResult,
+                     bool atMouse, juce::Point<float> mouseAtRequest)
 {
-    auto* peerComp = target != nullptr ? target->getTopLevelComponent() : nullptr;
+    // Context menus pass no target: anchor them to the window under the mouse so they are native too.
+    auto* anchor = target != nullptr ? target : underMouse;
+    auto* peerComp = anchor != nullptr ? anchor->getTopLevelComponent() : nullptr;
     auto* peer = peerComp != nullptr ? peerComp->getPeer() : nullptr;
 
     if (peer == nullptr)
@@ -140,12 +163,13 @@ void showMenu (juce::PopupMenu menu, juce::Component* target, std::function<void
     // Defer: NSMenu tracking is modal, so never start it from inside a JUCE mouse handler.
     const auto mouse = juce::Desktop::getMousePosition().toFloat();
     juce::Component::SafePointer<juce::Component> safe (target);
+    juce::Component::SafePointer<juce::Component> under (juce::Desktop::getInstance().getMainMouseSource().getComponentUnderMouse());
     const bool hadTarget = target != nullptr;
 
-    juce::MessageManager::callAsync ([pending = std::move (menu), safe, hadTarget, cb = std::move (onResult), atMouse, mouse]() mutable
+    juce::MessageManager::callAsync ([pending = std::move (menu), safe, under, hadTarget, cb = std::move (onResult), atMouse, mouse]() mutable
     {
         if (hadTarget && safe == nullptr) return;
-        showNow (std::move (pending), safe.getComponent(), std::move (cb), atMouse, mouse);
+        showNow (std::move (pending), safe.getComponent(), under.getComponent(), std::move (cb), atMouse, mouse);
     });
 }
 

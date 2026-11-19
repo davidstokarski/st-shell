@@ -116,6 +116,78 @@ namespace icons
                 p.startNewSubPath (10.0f, 7.0f); p.lineTo (10.0f, 5.0f); p.lineTo (14.0f, 5.0f); p.lineTo (14.0f, 7.0f);
                 p.startNewSubPath (7.0f, 7.0f); p.lineTo (8.0f, 19.0f); p.lineTo (16.0f, 19.0f); p.lineTo (17.0f, 7.0f);
                 break;
+
+            case Icon::pencil:
+                p.startNewSubPath (5.0f, 19.0f); p.lineTo (6.0f, 15.0f); p.lineTo (15.5f, 5.5f); p.lineTo (18.5f, 8.5f);
+                p.lineTo (9.0f, 18.0f); p.closeSubPath();
+                p.startNewSubPath (13.5f, 7.5f); p.lineTo (16.5f, 10.5f);
+                break;
+
+            case Icon::scissors:
+                p.addEllipse (5.0f, 14.5f, 5.0f, 5.0f);
+                p.addEllipse (14.0f, 14.5f, 5.0f, 5.0f);
+                p.startNewSubPath (9.0f, 15.0f); p.lineTo (16.5f, 4.5f);
+                p.startNewSubPath (15.0f, 15.0f); p.lineTo (7.5f, 4.5f);
+                break;
+
+            case Icon::stereoLink:
+                p.addEllipse (4.0f, 7.0f, 10.0f, 10.0f);
+                p.addEllipse (10.0f, 7.0f, 10.0f, 10.0f);
+                break;
+
+            case Icon::bars:
+                p.startNewSubPath (5.0f, 13.0f);  p.lineTo (5.0f, 17.0f);
+                p.startNewSubPath (9.0f, 9.0f);   p.lineTo (9.0f, 17.0f);
+                p.startNewSubPath (12.0f, 6.0f);  p.lineTo (12.0f, 17.0f);
+                p.startNewSubPath (15.0f, 9.0f);  p.lineTo (15.0f, 17.0f);
+                p.startNewSubPath (19.0f, 12.0f); p.lineTo (19.0f, 17.0f);
+                break;
+
+            case Icon::chevronsRight:
+                p.startNewSubPath (6.0f, 7.0f);  p.lineTo (11.0f, 12.0f); p.lineTo (6.0f, 17.0f);
+                p.startNewSubPath (12.0f, 7.0f); p.lineTo (17.0f, 12.0f); p.lineTo (12.0f, 17.0f);
+                break;
+
+            case Icon::chevronsLeft:
+                p.startNewSubPath (18.0f, 7.0f); p.lineTo (13.0f, 12.0f); p.lineTo (18.0f, 17.0f);
+                p.startNewSubPath (12.0f, 7.0f); p.lineTo (7.0f, 12.0f);  p.lineTo (12.0f, 17.0f);
+                break;
+
+            case Icon::gears:   // a large and a small gear (settings that interact): rings with short teeth
+            {
+                auto gear = [&p] (float cx, float cy, float r, int teeth)
+                {
+                    p.addEllipse (cx - r, cy - r, 2.0f * r, 2.0f * r);
+                    for (int i = 0; i < teeth; ++i)
+                    {
+                        const float a = juce::MathConstants<float>::twoPi * (float) i / (float) teeth;
+                        p.startNewSubPath (cx + std::cos (a) * r, cy + std::sin (a) * r);
+                        p.lineTo (cx + std::cos (a) * (r + 2.2f), cy + std::sin (a) * (r + 2.2f));
+                    }
+                };
+                gear (9.0f, 9.5f, 4.2f, 8);
+                gear (17.5f, 16.5f, 2.4f, 6);
+                break;
+            }
+
+            case Icon::sidechain:   // arrow up from a base line (external trigger)
+                p.startNewSubPath (6.0f, 19.0f); p.lineTo (18.0f, 19.0f);
+                p.startNewSubPath (12.0f, 16.0f); p.lineTo (12.0f, 5.0f);
+                p.startNewSubPath (8.0f, 9.0f); p.lineTo (12.0f, 5.0f); p.lineTo (16.0f, 9.0f);
+                break;
+
+            case Icon::tilt:   // a rising slope over a base line (spectral / analyser tilt)
+                p.startNewSubPath (4.0f, 19.0f); p.lineTo (20.0f, 19.0f);
+                p.startNewSubPath (4.0f, 15.5f); p.lineTo (20.0f, 5.0f);
+                p.startNewSubPath (16.0f, 5.0f); p.lineTo (20.0f, 5.0f); p.lineTo (20.0f, 9.0f);
+                break;
+
+            case Icon::headphones:
+                p.startNewSubPath (5.0f, 15.0f); p.lineTo (5.0f, 12.0f);
+                p.cubicTo (5.0f, 3.0f, 19.0f, 3.0f, 19.0f, 12.0f); p.lineTo (19.0f, 15.0f);
+                p.addRoundedRectangle (4.0f, 13.5f, 4.0f, 6.0f, 1.5f);
+                p.addRoundedRectangle (16.0f, 13.5f, 4.0f, 6.0f, 1.5f);
+                break;
         }
 
         return p;

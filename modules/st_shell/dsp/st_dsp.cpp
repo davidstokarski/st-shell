@@ -5,3 +5,6 @@
 #include "Dynamics.cpp"
 #include "Oversampler.cpp"
 #include "Reverb.cpp"
+#include "EqDesign.cpp"
+#include "Convolver.cpp"
+#include "Stft.cpp"

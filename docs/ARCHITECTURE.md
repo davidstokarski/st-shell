@@ -8,7 +8,7 @@ before it:
 | Layer | Contents |
 |---|---|
 | `core/` | `st::params` (ranges, formatters, builders, `Ref`), `MeterSource`, `AnalyzerSource`, `SpectrumAnalyzer` |
-| `dsp/` | `st::dsp`: `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `Crossover` (LR 12/24/48, ≤8 bands), `UpDownCompressor`, `Oversampler` (1–16x), `DelayLine`, `EnvelopeFollower`, `Reverb` (8 types), `LinearSmoother`, utils |
+| `dsp/` | `st::dsp`: `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `Crossover` (LR 12/24/48, ≤8 bands), `eq::` analog-matched EQ design + `EqCascade`, `PartitionedConvolver`, `UpDownCompressor`, `Oversampler` (1–16x), `DelayLine`, `EnvelopeFollower`, `Reverb` (8 types), `LinearSmoother`, utils |
 | `mod/` | `st::mod::ModMatrix` (LFOs, envelope followers, macros, routings in `apvts.state`) |
 | `state/` | `ProcessorBase`, `PresetManager`, `ABCompare` |
 | `theme/` | `Theme` tokens, `fonts`, `icons`, `paint::` helpers, `LookAndFeel` |
@@ -37,6 +37,8 @@ compiled, so **register new files in the aggregator** or they won't build. On Ap
 | Audio | read atomics (`apvts` raw values, `Ref::get`), process, write meter/analyser FIFOs, try-lock (never block) |
 | Message | allocate, touch ValueTrees, presets, UI, `prepare()` DSP, change oversampling (inside `suspendProcessing`) |
 
+- Work too heavy for the audio thread (FIR design, curve analysis) runs on a worker thread that reads the
+  parameters' atomics itself and publishes results lock-free (ST EQ: `FirWorker` → `PartitionedConvolver`).
 - Never allocate on the audio thread. If a parameter change needs reallocation (ST Sat: oversampling quality),
   listen to it (`apvts.addParameterListener`), defer with `AsyncUpdater`, then
   `suspendProcessing (true); engine.setQuality (q); suspendProcessing (false); setLatencySamples (...)`.

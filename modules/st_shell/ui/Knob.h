@@ -51,9 +51,17 @@ class Knob : public ParameterControl, public juce::DragAndDropTarget, private ju
 public:
     enum class Size { large, medium, small, mini };
     /** classic = matte grey disc with white crescent; ringed = adds the coloured rim (hero controls). */
-    enum class Look { classic, ringed };
+    /** classic = matte grey disc with white crescent; ringed = adds the coloured rim (hero controls);
+        arc = dark disc with a thin value arc in the knob colour (Pro-style band controls). With
+        setRecessed (true) an arc knob sits in a dark well; the gap between well and disc is the rim zone. */
+    enum class Look { classic, ringed, arc };
 
     Knob (juce::RangedAudioParameter&, juce::UndoManager* = nullptr, const juce::String& label = {});
+
+    /** Gestures for every knob in this plugin binary. false (default): double-click resets, Cmd-click types a
+        value. true (Pro-style): double-click types a value, Cmd-click resets. Alt-click always resets. */
+    static void setDoubleClickEntersValue (bool b) noexcept { doubleClickEntersValue() = b; }
+    static bool& doubleClickEntersValue() noexcept { static bool b = false; return b; }
     ~Knob() override;
 
     void setLabel (const juce::String& l) { label = l; repaint(); }
@@ -61,12 +69,23 @@ public:
     void setBipolar (bool b) { bipolar = b; repaint(); }
     void setSize (Size s) { size = s; repaint(); }
     void setLook (Look l) { look = l; repaint(); }
+    void setRecessed (bool r) { recessed = r; repaint(); }
     /** Where modulation connections should attach (local coords, next to the caption). */
     juce::Point<float> getModulationAnchor() const;
 
     /** Makes the coloured rim (ringed look) an editable second control, e.g. stereo spread or balance.
         Dragging the rim edits `rimParam`; its value is shown as L / R markers around the rim. */
     void setRimParameter (juce::RangedAudioParameter* rimParam, const juce::String& rimLabel, bool showLR = true);
+
+    /** How the rim parameter is drawn:
+        - spread: L / R markers spread symmetrically around the value (stereo spread, balance)
+        - range:  the rim value is an OFFSET in the main parameter's units (e.g. a dynamic EQ range in dB):
+                  a span from the value to value + offset, plus optional live activity on top. */
+    enum class RimStyle { spread, range };
+    void setRimStyle (RimStyle s) { rimStyle = s; repaint(); }
+    /** For RimStyle::range: live offset (same units as the rim parameter), polled at ~30 Hz, e.g. the
+        current dynamic gain change. Drawn in the warning (yellow) colour over the range span. */
+    void setRimActivitySource (std::function<float()> fn);
 
     /** Dragging the outer modulation arc adjusts modulation depth (wired by ModulationBinder). */
     std::function<void()> onModulationDepthBegin;
@@ -127,6 +146,10 @@ private:
     float rimNorm = 0.5f;
     juce::String rimLabel;
     bool rimLR = true;
+    RimStyle rimStyle = RimStyle::spread;
+    bool recessed = false;
+    std::function<float()> rimActivity;
+    float rimActivityValue = 0.0f;
     bool bipolar = false, hovering = false, dragging = false, showValueAlways = false;
     juce::Point<float> lastDragPos;
     std::function<ModulationDisplay()> modSource;

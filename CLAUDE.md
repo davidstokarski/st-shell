@@ -5,7 +5,9 @@ It holds the DSP building blocks, state/preset plumbing, modulation system and â
 **design language**. Every plugin in the family must look and feel like it was made by the same team.
 
 The reference implementation is **ST Sat** (multiband saturation): `../st-sat` locally,
-https://github.com/davidstokarski/st-sat on GitHub. When in doubt, do what ST Sat does.
+https://github.com/davidstokarski/st-sat on GitHub. When in doubt, do what ST Sat does. **ST EQ** (`../st-eq`,
+parametric / dynamic EQ) is the second plugin: look there for EQ maths, convolution / linear phase and worker threads.
+After changing the shell, rebuild and test both plugins.
 
 ## Read before you write code
 

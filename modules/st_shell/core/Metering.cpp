@@ -63,7 +63,7 @@ MeterSource::Reading MeterSource::read() noexcept
 }
 
 //==============================================================================
-AnalyzerSource::AnalyzerSource() : buffer ((size_t) fifoSize, 0.0f) {}
+AnalyzerSource::AnalyzerSource() : buffer ((size_t) fifoSize, 0.0f), history ((size_t) historySize, 0.0f) {}
 
 void AnalyzerSource::prepare (double sr)
 {
@@ -73,7 +73,23 @@ void AnalyzerSource::prepare (double sr)
 
 void AnalyzerSource::push (const float* const* channels, int numChannels, int numSamples) noexcept
 {
-    if (! active.load (std::memory_order_relaxed) || numChannels <= 0)
+    if (numChannels <= 0)
+        return;
+
+    // history tap (always)
+    {
+        const float g = 1.0f / (float) numChannels;
+        const uint32_t w = historyWrite.load (std::memory_order_relaxed);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float sum = 0.0f;
+            for (int c = 0; c < numChannels; ++c) sum += channels[c][i];
+            history[(size_t) ((w + (uint32_t) i) & (uint32_t) (historySize - 1))] = sum * g;
+        }
+        historyWrite.store (w + (uint32_t) numSamples, std::memory_order_release);
+    }
+
+    if (! active.load (std::memory_order_relaxed))
         return;
 
     const int toWrite = juce::jmin (numSamples, fifo.getFreeSpace());
@@ -98,6 +114,14 @@ void AnalyzerSource::push (const float* const* channels, int numChannels, int nu
     write (s1, n1, 0);
     write (s2, n2, n1);
     fifo.finishedWrite (n1 + n2);
+}
+
+void AnalyzerSource::readLatest (float* dest, int n) const noexcept
+{
+    n = juce::jlimit (0, historySize, n);
+    const uint32_t w = historyWrite.load (std::memory_order_acquire);
+    for (int i = 0; i < n; ++i)
+        dest[i] = history[(size_t) ((w - (uint32_t) n + (uint32_t) i) & (uint32_t) (historySize - 1))];
 }
 
 int AnalyzerSource::pull (float* dest, int max) noexcept
@@ -150,7 +174,24 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
 
     // Pull everything available into the ring buffer.
     int got = 0;
-    while ((got = source.pull (scratch.data(), (int) scratch.size())) > 0)
+    if (opts.nonConsuming)
+    {
+        const uint32_t w = source.getHistoryPosition();
+        const int fresh = historyPrimed ? (int) juce::jmin ((uint32_t) scratch.size(), w - lastHistory) : (int) juce::jmin ((uint32_t) scratch.size(), w);
+        historyPrimed = true;
+        lastHistory = w;
+        if (fresh > 0)
+        {
+            source.readLatest (scratch.data(), fresh);
+            for (int i = 0; i < fresh; ++i)
+            {
+                ring[(size_t) ringPos] = scratch[(size_t) i];
+                ringPos = (ringPos + 1) & (fftSize - 1);
+            }
+            newSamples += fresh;
+        }
+    }
+    else while ((got = source.pull (scratch.data(), (int) scratch.size())) > 0)
     {
         for (int i = 0; i < got; ++i)
         {

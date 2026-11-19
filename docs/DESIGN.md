@@ -35,7 +35,8 @@ Reference: ST Sat (`../st-sat`, screenshot in its README). Compare every new UI 
 | `series[8]` | modulation sources (green, cyan, blue, indigo, violet, magenta, orange, yellow) |
 
 A new plugin may change `accent`/`accent2` (and `displayTop`/`displayGlow`) for its own identity — set them once
-at startup. Everything else stays shared.
+at startup. The red display haze is ST Sat's identity: ST EQ sets a neutral graphite display and neutral
+surfaces (`bg0..bg4`, `glassPanel`, `spectrum`) in its processor constructor. Everything else stays shared.
 
 ## 3. Type
 
@@ -52,6 +53,10 @@ Values and names: `fonts::medium` 11–14 px. Never use the system font directly
 - **Faders** (`st::Fader`): thin dark slot + grey **pill cap** with a centre dash (`paint::pillHandle`).
 - **Buttons**: grey hardware faces (`paint::greyButton`) for things that sit on the control bar (power, style, S/M, ×);
   text-only `st::FlatButton` in header/footer; `•••` flat buttons open popovers.
+- **Band island** (EQ-style plugins, ST EQ `BandIsland`): a lens-shaped glass island whose top edge rises
+  smoothly to a plateau over the recessed hero knob (`Look::arc` + `setRecessed`), arc knobs either side with
+  centre-value labels, small boxed power / × buttons, shape and placement tabs flush with the island's edges.
+  Secondary features expand *in place* (ST EQ: the dynamics tab widens the island) rather than opening a popover.
 - **Display handles**: the same pill caps for draggable band handles; crossovers are dashed lines with small dark
   grip buttons (tent glyph).
 - **Dropdowns**: grey style on the bar, flat "Caption Value ▾" style in the footer. Menus are **native** (`st::showMenu`).

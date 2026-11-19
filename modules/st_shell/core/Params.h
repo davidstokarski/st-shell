@@ -32,7 +32,10 @@ juce::String formatDb (float db, int decimals = 1, bool withUnit = true, bool sh
 juce::String formatPercent (float pct, bool bipolar = false);
 juce::String formatMs (float ms);
 juce::String formatRatio (float ratio);
+/** "1k", "1.5 kHz", "250" and note names ("A4" = 440 Hz, "C#3+13" with cents). */
 float parseHz (const juce::String&);
+/** "-6", "+3.5 dB", "-inf", and amplitude ratios: "2x" = +6 dB, "50%" = -6 dB. */
+float parseDb (const juce::String&);
 
 /** Attribute presets for juce::AudioParameterFloat */
 juce::AudioParameterFloatAttributes hzAttributes();

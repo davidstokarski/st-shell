@@ -45,8 +45,15 @@ public:
     void push (const float* const* channels, int numChannels, int numSamples) noexcept;
     void push (const juce::AudioBuffer<float>& b, int numSamples) noexcept { push (b.getArrayOfReadPointers(), b.getNumChannels(), numSamples); }
 
-    /** UI thread: pull up to `max` samples, returns count. */
+    /** UI thread: pull up to `max` samples, returns count. (Single consumer: the plugin's own analyser.) */
     int pull (float* dest, int max) noexcept;
+
+    /** Non-consuming tap for any number of readers on any thread (e.g. another instance's editor):
+        the latest history samples are always kept, whether or not the FIFO is active or read.
+        getHistoryPosition() counts samples written so far (wraps); readLatest copies the newest n <= historySize. */
+    static constexpr int historySize = 1 << 14;
+    uint32_t getHistoryPosition() const noexcept { return historyWrite.load (std::memory_order_acquire); }
+    void readLatest (float* dest, int n) const noexcept;
     double getSampleRate() const noexcept { return sampleRate.load(); }
 
     void setActive (bool shouldBeActive) noexcept { active.store (shouldBeActive); }
@@ -58,6 +65,8 @@ private:
     std::vector<float> buffer;
     std::atomic<double> sampleRate { 48000.0 };
     std::atomic<bool> active { true };
+    std::vector<float> history;
+    std::atomic<uint32_t> historyWrite { 0 };
 };
 
 //==============================================================================
@@ -72,6 +81,7 @@ struct SpectrumAnalyzerOptions
     float floorDb = -120.0f;
     int smoothingPasses = 3;        // ~1/6-octave smoothing at 300 points
     int hopSize = 0;                // new samples needed per FFT (0 = fftSize / 8). Smaller = smoother motion.
+    bool nonConsuming = false;      // read the source's history tap instead of its FIFO (several analysers per source)
 };
 
 /** UI-side FFT analyser. Call update() from a timer; read display levels. */
@@ -100,6 +110,8 @@ private:
     std::unique_ptr<juce::dsp::FFT> fft;
     std::vector<float> ring, window, fftData, binDb, levels, targets, freqs, scratch;
     int ringPos = 0, fftSize = 0, newSamples = 0;
+    uint32_t lastHistory = 0;
+    bool historyPrimed = false;
     double lastSampleRate = 0.0;
     void rebuildMapping (double sr);
 };

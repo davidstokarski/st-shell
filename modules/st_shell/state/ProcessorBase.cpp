@@ -13,9 +13,45 @@ ProcessorBase::ProcessorBase (const BusesProperties& buses, juce::AudioProcessor
         undoManager.clearUndoHistory();
         stateRestored();
     };
+    instanceNumber = InstanceRegistry::get().add (this);
 }
 
-ProcessorBase::~ProcessorBase() = default;
+ProcessorBase::~ProcessorBase()
+{
+    unregisterInstance();
+}
+
+void ProcessorBase::unregisterInstance()
+{
+    InstanceRegistry::get().remove (this);
+}
+
+void ProcessorBase::updateTrackProperties (const TrackProperties& p)
+{
+    {
+        const juce::ScopedLock sl (trackLock);
+        track = p;
+    }
+    InstanceRegistry::get().changed();
+}
+
+juce::String ProcessorBase::getTrackName() const
+{
+    const juce::ScopedLock sl (trackLock);
+    return track.name.value_or (juce::String());
+}
+
+juce::Colour ProcessorBase::getTrackColour() const
+{
+    const juce::ScopedLock sl (trackLock);
+    return track.colourARGB.has_value() ? juce::Colour (*track.colourARGB) : juce::Colour();
+}
+
+juce::String ProcessorBase::getInstanceLabel() const
+{
+    const auto n = getTrackName();
+    return n.isNotEmpty() ? n : getName() + " " + juce::String (instanceNumber);
+}
 
 void ProcessorBase::prepareShell (double sampleRate)
 {

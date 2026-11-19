@@ -97,8 +97,15 @@ Knob::~Knob()
 void Knob::setModulationSource (std::function<ModulationDisplay()> fn)
 {
     modSource = std::move (fn);
-    if (modSource) startTimerHz (30);
+    if (modSource || rimActivity) startTimerHz (30);
     else { stopTimer(); modState = {}; repaint(); }
+}
+
+void Knob::setRimActivitySource (std::function<float()> fn)
+{
+    rimActivity = std::move (fn);
+    if (modSource || rimActivity) startTimerHz (30);
+    else { stopTimer(); rimActivityValue = 0.0f; repaint(); }
 }
 
 void Knob::setModulationDropHint (bool show, juce::Colour c)
@@ -165,6 +172,11 @@ void Knob::itemDropped (const SourceDetails& d)
 
 void Knob::timerCallback()
 {
+    if (rimActivity)
+    {
+        const float v = rimActivity();
+        if (std::abs (v - rimActivityValue) > 0.01f) { rimActivityValue = v; repaint(); }
+    }
     if (! modSource) return;
     auto m = modSource();
     if (m.active != modState.active || std::abs (m.current - modState.current) > 0.001f
@@ -213,6 +225,11 @@ Knob::Geometry Knob::geometry() const
     gm.outerR = gm.R - gm.modW - 1.5f;
     gm.rimW = look == Look::ringed ? gm.outerR * 0.17f : 0.0f;
     gm.discR = gm.outerR - gm.rimW - (look == Look::ringed ? 1.0f : 0.0f);
+    if (look == Look::arc)
+    {
+        gm.discR = recessed ? gm.outerR * 0.74f : gm.outerR * 0.96f;
+        gm.rimW = gm.outerR - gm.discR;
+    }
     return gm;
 }
 
@@ -222,7 +239,7 @@ Knob::Zone Knob::zoneAt (juce::Point<float> p) const
     const float d = p.getDistanceFrom (gm.centre);
     if (modSource && modState.active && onModulationDepthDrag && d >= gm.outerR - 0.5f && d <= gm.R + 4.0f)
         return Zone::modDepth;
-    if (look == Look::ringed && rimParam != nullptr && d >= gm.discR - 1.0f && d < gm.outerR + (modState.active ? -0.5f : 4.0f))
+    if ((look == Look::ringed || (look == Look::arc && recessed)) && rimParam != nullptr && d >= gm.discR - 1.0f && d < gm.outerR + (modState.active ? -0.5f : 4.0f))
         return Zone::rim;
     return Zone::value;
 }
@@ -317,8 +334,41 @@ void Knob::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.22f));
         g.strokePath (lit, juce::PathStrokeType (rimW * 0.55f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
 
+        // Rim control (range style): span from the value to value + offset, live activity on top
+        if (rimParam != nullptr && rimStyle == RimStyle::range)
+        {
+            const float plain = param.convertFrom0to1 (normValue);
+            const float offset = rimParam->convertFrom0to1 (rimNorm);
+            auto angleFor = [&] (float off)
+            {
+                const auto& r = param.getNormalisableRange();
+                return startA + (endA - startA) * param.convertTo0to1 (juce::jlimit (r.start, r.end, plain + off));
+            };
+            const float aEnd = angleFor (offset);
+            if (std::abs (aEnd - valueA) > 0.005f)
+            {
+                juce::Path span;
+                span.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aEnd), juce::jmax (valueA, aEnd), true);
+                g.setColour (juce::Colours::white.withAlpha (rimActive ? 0.8f : 0.6f));
+                g.strokePath (span, juce::PathStrokeType (rimW * 0.45f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+                const auto p0 = centre.getPointOnCircumference (outerR - rimW + 1.0f, aEnd);
+                const auto p1 = centre.getPointOnCircumference (outerR - 0.5f, aEnd);
+                g.setColour (juce::Colours::white);
+                g.drawLine ({ p0, p1 }, 2.2f);
+            }
+            if (rimActivity && std::abs (rimActivityValue) > 0.02f)
+            {
+                const float aAct = angleFor (rimActivityValue);
+                juce::Path act;
+                act.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aAct), juce::jmax (valueA, aAct), true);
+                g.setColour (t.warning);
+                g.strokePath (act, juce::PathStrokeType (rimW * 0.45f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+        }
+
         // Rim control: L / R markers spread around the value
-        if (rimParam != nullptr)
+        if (rimParam != nullptr && rimStyle == RimStyle::spread)
         {
             const float s = (rimNorm - 0.5f) * 2.0f;                    // -1..1
             const float spread = s * 0.55f;                              // radians
@@ -351,7 +401,7 @@ void Knob::paint (juce::Graphics& g)
             }
         }
 
-        if (rimParam != nullptr && rimLR)
+        if (rimParam != nullptr && rimLR && rimStyle == RimStyle::spread)
         {
             // Static L / R hint at the bottom corners, like a stereo knob
             g.setFont (fonts::semibold (10.0f));
@@ -361,7 +411,94 @@ void Knob::paint (juce::Graphics& g)
         }
     }
 
-    paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
+    if (look == Look::arc)
+    {
+        // Dark well (recessed hero knob)
+        if (recessed)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.2f));
+            g.fillEllipse (juce::Rectangle<float> (outerR * 2.0f, outerR * 2.0f).withCentre (centre));
+            g.setColour (juce::Colours::white.withAlpha (0.12f));
+            g.drawEllipse (juce::Rectangle<float> (outerR * 2.0f - 1.0f, outerR * 2.0f - 1.0f).withCentre (centre), 1.0f);
+            juce::ColourGradient lip (juce::Colours::black.withAlpha (0.35f), centre.x, centre.y - outerR,
+                                      juce::Colours::white.withAlpha (0.07f), centre.x, centre.y + outerR, false);
+            g.setGradientFill (lip);
+            g.drawEllipse (juce::Rectangle<float> (outerR * 2.0f - 1.0f, outerR * 2.0f - 1.0f).withCentre (centre), 1.0f);
+        }
+
+        // Disc: dark, soft shadow, faint top light, hairline edge
+        const auto disc = juce::Rectangle<float> (discR * 2.0f, discR * 2.0f).withCentre (centre);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillEllipse (disc.translated (0.0f, 1.5f).expanded (0.5f));
+        g.setGradientFill (juce::ColourGradient (t.bg4.brighter (hovering || dragging ? 0.12f : 0.0f), centre.x, disc.getY(),
+                                                 t.bg2, centre.x, disc.getBottom(), false));
+        g.fillEllipse (disc);
+        g.setColour (juce::Colours::white.withAlpha (0.27f));
+        g.drawEllipse (disc.reduced (0.75f), 1.5f);
+
+        // Value arc: inside the disc edge, or in the gap of the well when recessed
+        const auto arcCol = enabled ? colour : t.textFaint;
+        const float ar = discR - juce::jmax (3.0f, discR * 0.155f);
+        const float aw = juce::jmax (1.7f, discR * 0.064f);
+        const float from = bipolar ? 0.0f : startA;
+        if (std::abs (valueA - from) > 0.01f)
+        {
+            juce::Path arc;
+            arc.addCentredArc (centre.x, centre.y, ar, ar, 0.0f, juce::jmin (from, valueA), juce::jmax (from, valueA), true);
+            g.setColour (arcCol);
+            g.strokePath (arc, juce::PathStrokeType (aw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        else
+        {
+            g.setColour (arcCol);
+            g.drawLine (juce::Line<float> (centre.getPointOnCircumference (ar - aw, valueA), centre.getPointOnCircumference (ar + aw, valueA)), aw);
+        }
+
+        // Range rim (recessed): red span from the value to value + offset, live activity in the warning colour
+        if (recessed && rimParam != nullptr && rimStyle == RimStyle::range)
+        {
+            const float plain = param.convertFrom0to1 (normValue);
+            auto angleFor = [&] (float off)
+            {
+                const auto& r = param.getNormalisableRange();
+                return startA + (endA - startA) * param.convertTo0to1 (juce::jlimit (r.start, r.end, plain + off));
+            };
+            const float rr = discR + rimW * 0.5f;
+            const float rw = juce::jmax (3.0f, rimW * 0.72f);
+            const float aEnd = angleFor (rimParam->convertFrom0to1 (rimNorm));
+            if (std::abs (aEnd - valueA) > 0.005f)
+            {
+                // the range: a dim red span across the gap, and a bright red block at its end
+                juce::Path span;
+                span.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aEnd), juce::jmax (valueA, aEnd), true);
+                g.setColour (t.accent.withAlpha (rimActive ? 0.42f : 0.28f));
+                g.strokePath (span, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+                const float blockLen = juce::jmin (0.2f, std::abs (aEnd - valueA));
+                const float b0 = aEnd > valueA ? aEnd - blockLen : aEnd, b1 = aEnd > valueA ? aEnd : aEnd + blockLen;
+                juce::Path block;
+                block.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, b0, b1, true);
+                g.setColour (t.accent.brighter (rimActive ? 0.3f : 0.1f));
+                g.strokePath (block, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+            }
+            else if (rimActive)
+            {
+                juce::Path track;
+                track.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, startA, endA, true);
+                g.setColour (t.accent.withAlpha (0.18f));
+                g.strokePath (track, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+            }
+            if (rimActivity && std::abs (rimActivityValue) > 0.02f)
+            {
+                const float aAct = angleFor (rimActivityValue);
+                juce::Path act;
+                act.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aAct), juce::jmax (valueA, aAct), true);
+                g.setColour (t.warning);
+                g.strokePath (act, juce::PathStrokeType (rw * 0.8f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+            }
+        }
+    }
+    else
+        paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
 
     // Hover: a faint light ring around the disc (FabFilter-style affordance)
     if ((hovering || dragging) && hoverZone == Zone::value && enabled)
@@ -462,7 +599,8 @@ void Knob::mouseDown (const juce::MouseEvent& e)
 
     if (e.mods.isCommandDown())
     {
-        showTextEntry();
+        if (doubleClickEntersValue()) resetToDefault();
+        else showTextEntry();
         return;
     }
 
@@ -536,6 +674,8 @@ void Knob::mouseDoubleClick (const juce::MouseEvent& e)
 
     if (zoneAt (e.position) == Zone::rim && rimAttachment != nullptr)
         rimAttachment->setValueAsCompleteGesture (rimParam->convertFrom0to1 (rimParam->getDefaultValue()));
+    else if (doubleClickEntersValue())
+        showTextEntry();
     else
         resetToDefault();
 }

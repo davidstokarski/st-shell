@@ -694,6 +694,221 @@ void testFiltersAndUtils()
     std::printf ("  biquad err %.4f dB, svf err %.4f dB, tilt pivot %.2e / low %.3f / high %.3f dB\n",
                  worstBq, worstSvf, atPivot, lowEnd, highEnd);
 }
+
+//==============================================================================
+void testEqDesign()
+{
+    std::printf ("EqDesign (analog-matched EQ bands)\n");
+    using namespace st::dsp::eq;
+    const EqShape shapes[] = { EqShape::bell, EqShape::lowShelf, EqShape::lowCut, EqShape::highShelf, EqShape::highCut,
+                               EqShape::notch, EqShape::bandPass, EqShape::tiltShelf, EqShape::flatTilt, EqShape::allPass };
+    const char* names[] = { "bell", "lowShelf", "lowCut", "highShelf", "highCut", "notch", "bandPass", "tiltShelf", "flatTilt", "allPass" };
+
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+    {
+        for (int si = 0; si < 10; ++si)
+        {
+            double worst = 0.0, worstF = 0, worstG = 0, worstQ = 0, worstHz = 0; int worstO = 0;
+            bool stable = true, finite = true;
+            for (double f : { 25.0, 120.0, 1000.0, 5000.0, 12000.0, 16000.0, 19000.0 })
+                for (double g : { -18.0, -6.0, 6.0, 18.0 })
+                    for (double q : { 0.3, 1.0, 4.0 })
+                        for (int order : { 1, 2, 4, 8, 16 })
+                        {
+                            const bool practical = f < 0.25 * fs && order <= 8;
+                            if (! practical) continue;
+                            EqBandSpec spec { shapes[si], f, g, q, order };
+                            const auto a = designAnalog (spec);
+                            const auto d = designDigital (a, fs);
+                            for (int i = 0; i < d.numSections; ++i)
+                            {
+                                const auto& c = d.sections[(size_t) i];
+                                stable &= std::abs (c.a2) < 1.0 && std::abs (c.a1) < 1.0 + c.a2 + 1.0e-9;
+                                finite &= std::isfinite (c.b0) && std::isfinite (c.b1) && std::isfinite (c.b2);
+                            }
+                            // compare where the analog response is above -40 dB (stop bands are irrelevant for matching)
+                            for (int k = 0; k < 160; ++k)
+                            {
+                                const double hz = 20.0 * std::pow (std::min (20000.0, 0.45 * fs) / 20.0, k / 159.0);
+                                const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
+                                if (ma < -24.0) continue;
+                                // notches: skip the immediate null
+                                if (shapes[si] == EqShape::notch && std::abs (std::log2 (hz / f)) < 0.25) continue;
+                                if (std::abs (ma - md) > worst) { worst = std::abs (ma - md); worstF = f; worstG = g; worstQ = q; worstO = order; worstHz = hz; }
+                            }
+                        }
+            check (stable, fmt ("%s stable @%g", names[si], fs));
+            check (finite, fmt ("%s finite @%g", names[si], fs));
+            const double tol = (shapes[si] == EqShape::bandPass || shapes[si] == EqShape::notch) ? 4.5
+                             : (shapes[si] == EqShape::bell || shapes[si] == EqShape::flatTilt) ? 1.0 : 2.0;
+            check (worst < tol, fmt ("%s matches analog within %.1f dB @%g (worst %.3f dB)", names[si], tol, fs, worst));
+            if (fs == 48000.0 || worst > tol) std::printf ("  %-10s practical range (f < 0.25 fs, <= 48 dB/oct): worst |analog - digital| to 20 kHz: %.3f dB (f %g g %g q %g order %d at %g Hz, fs %g)\n", names[si], worst, worstF, worstG, worstQ, worstO, worstHz, fs);
+        }
+    }
+
+    // Bell near Nyquist: the matched design keeps its shape where the RBJ/bilinear bell is badly cramped.
+    {
+        const double fs = 44100.0;
+        EqBandSpec spec { EqShape::bell, 16000.0, 12.0, 0.7, 2 };
+        const auto a = designAnalog (spec);
+        const auto d = designDigital (a, fs);
+        const auto rbj = BiquadCoeffs::design (BiquadType::peak, fs, 16000.0, 0.7, 12.0);
+        const double hz = 20000.0;
+        const double errMatched = std::abs (toDb (a.magnitude (hz)) - toDb (std::abs (d.response (hz, fs))));
+        const double errRbj = std::abs (toDb (a.magnitude (hz)) - toDb (rbj.magnitude (hz, fs)));
+        std::printf ("  bell 16k/+12/Q0.7 @20k: matched err %.2f dB, RBJ err %.2f dB\n", errMatched, errRbj);
+        check (errMatched < 1.0 && errRbj > 3.0, "matched bell avoids cramping");
+    }
+
+    // Processing: EqCascade gain at the bell centre equals the design, glide stays finite
+    {
+        const double fs = 48000.0;
+        EqCascade cascade;
+        auto d = designDigital (EqBandSpec { EqShape::bell, 1000.0, 9.0, 1.0, 2 }, fs);
+        cascade.setDesign (d, false);
+        std::vector<float> x (48000);
+        for (size_t i = 0; i < x.size(); ++i) x[i] = (float) std::sin (kTwoPi * 1000.0 * (double) i / fs);
+        bool ok = true;
+        for (int start = 0; start < 48000; start += 64)
+        {
+            if (start == 24000) cascade.setDesign (designDigital (EqBandSpec { EqShape::bell, 1000.0, -9.0, 1.0, 2 }, fs), true);
+            cascade.process (0, x.data() + start, 64);
+            cascade.advance();
+        }
+        double peakA = 0.0, peakB = 0.0;
+        for (int i = 20000; i < 24000; ++i) peakA = std::max (peakA, (double) std::abs (x[(size_t) i]));
+        for (int i = 44000; i < 48000; ++i) peakB = std::max (peakB, (double) std::abs (x[(size_t) i]));
+        for (auto v : x) ok &= std::isfinite (v);
+        check (ok, "EqCascade finite");
+        check (std::abs (toDb (peakA) - 9.0) < 0.1 && std::abs (toDb (peakB) + 9.0) < 0.1,
+               fmt ("EqCascade bell gain (%.2f / %.2f dB)", toDb (peakA), toDb (peakB)));
+    }
+}
+
+//==============================================================================
+void testStft()
+{
+    std::printf ("StftProcessor\n");
+    StftProcessor stft;
+    stft.prepare (10, 2, 1);
+    const int N = stft.getFftSize(), n = 6000;
+    check (stft.getLatencySamples() == N, "latency = N");
+
+    // Identity: output = input delayed by N.
+    juce::Random rng (3);
+    std::vector<float> l ((size_t) n), r ((size_t) n), inL ((size_t) n), inR ((size_t) n);
+    for (int i = 0; i < n; ++i) { inL[(size_t) i] = l[(size_t) i] = rng.nextFloat() * 2.0f - 1.0f; inR[(size_t) i] = r[(size_t) i] = std::sin (0.01f * (float) i); }
+    float* io[2] = { l.data(), r.data() };
+    int frames = 0;
+    for (int pos = 0; pos < n; pos += 100)
+    {
+        const int k = std::min (100, n - pos);
+        float* sub[2] = { io[0] + pos, io[1] + pos };
+        stft.process (sub, 2, nullptr, 0, k, [&frames] (StftProcessor&) { ++frames; });
+    }
+    double err = 0.0;
+    for (int i = 2 * N; i < n; ++i)
+        err = std::max ({ err, (double) std::abs (l[(size_t) i] - inL[(size_t) (i - N)]), (double) std::abs (r[(size_t) i] - inR[(size_t) (i - N)]) });
+    check (err < 1.0e-4, fmt ("identity error %.2g", err));
+    check (frames == n / (N / 4), fmt ("frames %d", frames));
+
+    // Sine normalisation + side channel analysis: a bin-centred sine of amplitude 0.5 reads 0.5.
+    stft.reset();
+    constexpr int bin = 37;
+    std::vector<float> s ((size_t) n), m ((size_t) n, 0.0f);
+    for (int i = 0; i < n; ++i) s[(size_t) i] = 0.5f * std::sin (2.0f * juce::MathConstants<float>::pi * (float) bin * (float) i / (float) N);
+    float amp = 0.0f;
+    float* mo[1] = { m.data() };
+    const float* sd[1] = { s.data() };
+    stft.process (mo, 1, sd, 1, n, [&amp] (StftProcessor& p) { amp = std::abs (p.getSideSpectrum (0)[bin]) * p.getSineNormalisation(); });
+    check (std::abs (amp - 0.5f) < 0.01f, fmt ("sine amplitude %.3f", amp));
+
+    // A per-bin gain of -inf removes that bin's sine.
+    stft.reset();
+    for (int i = 0; i < n; ++i) m[(size_t) i] = s[(size_t) i];
+    stft.process (mo, 1, nullptr, 0, n, [] (StftProcessor& p) { for (int k = bin - 6; k <= bin + 6; ++k) p.getSpectrum (0)[k] = {}; });
+    double rest = 0.0;
+    for (int i = 2 * N; i < n; ++i) rest = std::max (rest, (double) std::abs (m[(size_t) i]));
+    check (rest < 1.0e-3, fmt ("notched sine residual %.2g", rest));
+}
+
+void testConvolver()
+{
+    std::printf ("PartitionedConvolver\n");
+    juce::Random rng (7);
+    const int irLen = 3001, P = 256, n = 20000;
+
+    for (auto routing : { PartitionedConvolver::Routing::mono, PartitionedConvolver::Routing::diagonal, PartitionedConvolver::Routing::matrix })
+    {
+        const int nIrs = routing == PartitionedConvolver::Routing::mono ? 1 : routing == PartitionedConvolver::Routing::diagonal ? 2 : 4;
+        std::vector<std::vector<float>> irs ((size_t) nIrs, std::vector<float> ((size_t) irLen));
+        for (auto& ir : irs) for (auto& v : ir) v = rng.nextFloat() * 2.0f - 1.0f;
+        std::vector<const float*> ptrs;
+        for (auto& ir : irs) ptrs.push_back (ir.data());
+
+        std::vector<float> in0 ((size_t) n), in1 ((size_t) n);
+        for (int i = 0; i < n; ++i) { in0[(size_t) i] = rng.nextFloat() - 0.5f; in1[(size_t) i] = rng.nextFloat() - 0.5f; }
+
+        PartitionedConvolver conv;
+        conv.prepare (P, 4096, 2, 4);
+        conv.writeImpulseResponses (routing, ptrs.data(), irLen);
+
+        std::vector<float> o0 = in0, o1 = in1;
+        int pos = 0, blk = 1;
+        while (pos < n)
+        {
+            const int k = std::min (blk, n - pos);
+            float* ch[2] = { o0.data() + pos, o1.data() + pos };
+            conv.process (ch, 2, k);
+            pos += k;
+            blk = (blk * 7 + 3) % 700 + 1;   // odd host block sizes
+        }
+
+        auto direct = [&] (int out, int i)
+        {
+            double y = 0.0;
+            for (int j = 0; j < irLen && j <= i; ++j)
+            {
+                const double x0 = in0[(size_t) (i - j)], x1 = in1[(size_t) (i - j)];
+                if (routing == PartitionedConvolver::Routing::mono) y += irs[0][(size_t) j] * (out == 0 ? x0 : x1);
+                else if (routing == PartitionedConvolver::Routing::diagonal) y += irs[(size_t) out][(size_t) j] * (out == 0 ? x0 : x1);
+                else y += irs[(size_t) (out * 2)][(size_t) j] * x0 + irs[(size_t) (out * 2 + 1)][(size_t) j] * x1;
+            }
+            return y;
+        };
+
+        double err = 0.0;
+        for (int i = 4000; i < n; i += 37)
+        {
+            err = std::max (err, std::abs (direct (0, i - P) - o0[(size_t) i]));
+            err = std::max (err, std::abs (direct (1, i - P) - o1[(size_t) i]));
+        }
+        check (err < 2.0e-3, fmt ("convolver routing %d matches direct convolution (err %.2e)", (int) routing, err));
+    }
+
+    // Pass-through before any IR, and an IR swap mid-stream stays finite and lands on the new IR
+    {
+        PartitionedConvolver conv;
+        conv.prepare (128, 1024, 1, 1);
+        std::vector<float> x (4096);
+        for (size_t i = 0; i < x.size(); ++i) x[i] = (float) std::sin ((double) i * 0.01);
+        auto y = x;
+        float* ch[1] = { y.data() };
+        conv.process (ch, 1, 2048);
+        double err = 0.0;
+        for (int i = 300; i < 2048; ++i) err = std::max (err, (double) std::abs (y[(size_t) i] - x[(size_t) i - 128]));
+        check (err < 1.0e-4, fmt ("convolver pass-through (err %.2e)", err));
+
+        std::vector<float> half (1, 0.5f);
+        const float* p[1] = { half.data() };
+        conv.writeImpulseResponses (PartitionedConvolver::Routing::mono, p, 1);
+        float* ch2[1] = { y.data() + 2048 };
+        conv.process (ch2, 1, 2048);
+        err = 0.0;
+        for (int i = 2048 + 512; i < 4096; ++i) err = std::max (err, (double) std::abs (y[(size_t) i] - 0.5f * x[(size_t) i - 128]));
+        check (err < 1.0e-4, fmt ("convolver IR swap (err %.2e)", err));
+    }
+}
 } // namespace
 
 int main()
@@ -706,6 +921,9 @@ int main()
     testCrossoverSweep();
     testCompressor();
     testOversampler();
+    testEqDesign();
+    testConvolver();
+    testStft();
     benchmark();
 
     const double secs = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
