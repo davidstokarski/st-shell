@@ -314,6 +314,12 @@ void HeaderBar::showSettingsMenu()
         sizes.addItem (juce::String (juce::roundToInt (s * 100.0f)) + "%", true, std::abs (current - s) < 0.01f,
                        [this, s] { if (onScaleChosen) onScaleChosen (s); });
     menu.addSubMenu ("Interface size", sizes);
+    const bool tips = userSettings::getBool (userSettings::showTooltips, true);
+    menu.addItem ("Show Tooltips", true, tips, [this, tips]
+    {
+        userSettings::setBool (userSettings::showTooltips, ! tips);
+        if (onTooltipsToggled) onTooltipsToggled (! tips);
+    });
 
     if (extendSettingsMenu)
     {
@@ -337,10 +343,10 @@ EditorBase::EditorBase (ProcessorBase& p, int w, int h)
     content.addAndMakeVisible (header);
     content.setBounds (0, 0, designW, designH);
 
-    tooltips = std::make_unique<juce::TooltipWindow> (this, 700);
-    tooltips->setLookAndFeel (&lnf);
+    setTooltipsEnabled (userSettings::getBool (userSettings::showTooltips, true));
 
     header.onScaleChosen = [this] (float s) { setScale (s); };
+    header.onTooltipsToggled = [this] (bool on) { setTooltipsEnabled (on); };
 
     // Film-grain texture for the backdrop (subtle, generated once).
     grain = juce::Image (juce::Image::ARGB, 128, 128, true);
@@ -369,9 +375,24 @@ EditorBase::EditorBase (ProcessorBase& p, int w, int h)
     });
 }
 
+void EditorBase::setTooltipsEnabled (bool on)
+{
+    if (on == (tooltips != nullptr)) return;
+    if (on)
+    {
+        tooltips = std::make_unique<juce::TooltipWindow> (this, 700);
+        tooltips->setLookAndFeel (&lnf);
+    }
+    else
+    {
+        tooltips->setLookAndFeel (nullptr);
+        tooltips.reset();
+    }
+}
+
 EditorBase::~EditorBase()
 {
-    tooltips->setLookAndFeel (nullptr);
+    if (tooltips != nullptr) tooltips->setLookAndFeel (nullptr);
     content.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }

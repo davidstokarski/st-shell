@@ -40,6 +40,8 @@ public:
     std::function<void (juce::PopupMenu&)> extendSettingsMenu;
     /** Called when the user picks a UI scale from the settings menu. */
     std::function<void (float)> onScaleChosen;
+    /** Called when the user switches tooltips on / off (settings menu; saved for every ST plug-in). */
+    std::function<void (bool)> onTooltipsToggled;
     /** Shows a multiview button (left of the gear) that calls `fn` (see st::MultiView). */
     void setMultiViewCallback (std::function<void()> fn);
 
@@ -123,6 +125,11 @@ private:
     float scale = 1.0f;
     Content content;
     std::unique_ptr<juce::TooltipWindow> tooltips;
+public:
+    /** Tooltips on / off for this editor (the settings menu saves the choice for every ST plug-in). */
+    void setTooltipsEnabled (bool);
+    bool areTooltipsEnabled() const noexcept { return tooltips != nullptr; }
+private:
     juce::Image grain, backdrop;
     float backdropScale = 0.0f;
 };
