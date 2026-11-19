@@ -71,6 +71,15 @@ public:
     /** Leaves the instance registry now (call first thing in a subclass destructor if UI elsewhere may be
         using subclass members of this instance). Safe to call twice. */
     void unregisterInstance();
+    /** Process-unique id in the instance registry (0 if not registered). */
+    uint64_t getInstanceUid() const;
+
+    /** The compact module this instance shows in the multiview (st::MultiView), or null for none. It may be
+        created by another plug-in's multiview and is then rendered off screen and driven by forwarded mouse
+        events: keep it to knobs, displays and buttons (no text entry), and don't capture the mouse. */
+    virtual std::unique_ptr<juce::Component> createStripView() { return nullptr; }
+    /** Width of the module at a given height. */
+    virtual int getStripWidth (int height) const { return height * 2; }
 
 protected:
     /** Call at the start of prepareToPlay to set up meters and analysers. */

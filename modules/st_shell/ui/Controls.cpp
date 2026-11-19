@@ -346,7 +346,7 @@ void NumberBox::mouseDown (const juce::MouseEvent& e)
     dragging = true;
     lastY = e.position.y;
     beginEdit();
-    e.source.enableUnboundedMouseMovement (true, false);
+    if (getPeer() != nullptr) e.source.enableUnboundedMouseMovement (true, false);   // not when rendered off screen (multiview modules)
 }
 
 void NumberBox::mouseDrag (const juce::MouseEvent& e)
@@ -364,7 +364,7 @@ void NumberBox::mouseUp (const juce::MouseEvent& e)
     if (! dragging) return;
     dragging = false;
     endEdit();
-    e.source.enableUnboundedMouseMovement (false, true);
+    if (getPeer() != nullptr) e.source.enableUnboundedMouseMovement (false, true);
     repaint();
 }
 

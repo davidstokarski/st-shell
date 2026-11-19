@@ -107,14 +107,9 @@ static void showNow (juce::PopupMenu menu, juce::Component* target, juce::Compon
     auto* peerComp = anchor != nullptr ? anchor->getTopLevelComponent() : nullptr;
     auto* peer = peerComp != nullptr ? peerComp->getPeer() : nullptr;
 
-    if (peer == nullptr)
-    {
-        // Not on screen (or no target): fall back to JUCE's menu.
-        menu.showMenuAsync (juce::PopupMenu::Options(), [cb = std::move (onResult)] (int r) { if (cb) cb (r); });
-        return;
-    }
-
-    auto* view = (NSView*) peer->getNativeHandle();
+    // No window to anchor to (e.g. a multiview module rendered off screen for another plug-in): still a
+    // native menu, opened at the mouse in screen coordinates.
+    auto* view = peer != nullptr ? (NSView*) peer->getNativeHandle() : nil;
 
     juce::Point<float> screenPos;
     if (atMouse || target == nullptr)
@@ -125,7 +120,7 @@ static void showNow (juce::PopupMenu menu, juce::Component* target, juce::Compon
         screenPos = { area.getX(), area.getBottom() + 2.0f };
     }
 
-    const auto local = peer->globalToLocal (screenPos);
+    const auto local = peer != nullptr ? peer->globalToLocal (screenPos) : screenPos;
 
     std::vector<const juce::PopupMenu::Item*> leaves;
     int result = 0;
@@ -139,7 +134,8 @@ static void showNow (juce::PopupMenu menu, juce::Component* target, juce::Compon
         [ns setMinimumWidth: (CGFloat) target->getScreenBounds().getWidth()];
 
     // Synchronous tracking (standard for NSMenu); dispatch the result afterwards.
-    const NSPoint p = NSMakePoint ((CGFloat) local.x, [view isFlipped] ? (CGFloat) local.y : [view bounds].size.height - (CGFloat) local.y);
+    const NSPoint p = view != nil ? NSMakePoint ((CGFloat) local.x, [view isFlipped] ? (CGFloat) local.y : [view bounds].size.height - (CGFloat) local.y)
+                                  : [NSEvent mouseLocation];
     [ns popUpMenuPositioningItem: nil atLocation: p inView: view];
     [menuTarget release];
 

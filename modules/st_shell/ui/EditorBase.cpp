@@ -135,6 +135,14 @@ void HeaderBar::timerCallback()
     if (m != modified) { modified = m; repaint (presetArea); }
 }
 
+void HeaderBar::setMultiViewCallback (std::function<void()> fn)
+{
+    multiViewButton.onClick = std::move (fn);
+    multiViewButton.setMinimal (true);
+    addAndMakeVisible (multiViewButton);
+    resized();
+}
+
 void HeaderBar::resized()
 {
     auto r = getLocalBounds().withTrimmedTop (6).withTrimmedBottom (6);
@@ -142,6 +150,8 @@ void HeaderBar::resized()
 
     r.removeFromRight (14);
     settingsButton.setBounds (r.removeFromRight (28).withSizeKeepingCentre (28, 28));
+    r.removeFromRight (8);
+    if (multiViewButton.isVisible()) multiViewButton.setBounds (r.removeFromRight (28).withSizeKeepingCentre (28, 28));
 
     // Centre group: undo redo   A/B Copy   < preset >   Save
     auto c = getLocalBounds().withTrimmedTop (6).withTrimmedBottom (6).withSizeKeepingCentre (600, r.getHeight());

@@ -617,7 +617,7 @@ void Knob::mouseDown (const juce::MouseEvent& e)
     else
         beginEdit();
 
-    e.source.enableUnboundedMouseMovement (true, false);
+    if (getPeer() != nullptr) e.source.enableUnboundedMouseMovement (true, false);   // not when rendered off screen (multiview modules)
     repaint();
 }
 
@@ -664,7 +664,7 @@ void Knob::mouseUp (const juce::MouseEvent& e)
         endEdit();
 
     dragZone = Zone::value;
-    e.source.enableUnboundedMouseMovement (false, true);
+    if (getPeer() != nullptr) e.source.enableUnboundedMouseMovement (false, true);
     repaint();
 }
 

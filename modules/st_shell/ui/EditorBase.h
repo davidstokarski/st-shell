@@ -40,6 +40,8 @@ public:
     std::function<void (juce::PopupMenu&)> extendSettingsMenu;
     /** Called when the user picks a UI scale from the settings menu. */
     std::function<void (float)> onScaleChosen;
+    /** Shows a multiview button (left of the gear) that calls `fn` (see st::MultiView). */
+    void setMultiViewCallback (std::function<void()> fn);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -56,6 +58,7 @@ private:
     FlatButton copyButton { "Copy", "Copy the current slot to the other one" };
     FlatButton saveButton { "Save", "Save preset" };
     IconButton settingsButton { icons::Icon::gear, "Settings" };
+    IconButton multiViewButton { icons::Icon::multiview, "Multiview: every ST plug-in in the session, by track" };
     juce::Rectangle<int> presetArea, brandArea;
     bool modified = false;
 

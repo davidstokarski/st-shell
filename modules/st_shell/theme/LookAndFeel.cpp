@@ -176,6 +176,12 @@ namespace icons
                 p.startNewSubPath (8.0f, 9.0f); p.lineTo (12.0f, 5.0f); p.lineTo (16.0f, 9.0f);
                 break;
 
+            case Icon::multiview:   // stacked track rows (the multiview)
+                p.addRoundedRectangle (4.0f, 5.0f, 16.0f, 4.0f, 1.0f);
+                p.addRoundedRectangle (4.0f, 10.5f, 16.0f, 4.0f, 1.0f);
+                p.addRoundedRectangle (4.0f, 16.0f, 10.0f, 4.0f, 1.0f);
+                break;
+
             case Icon::tilt:   // a rising slope over a base line (spectral / analyser tilt)
                 p.startNewSubPath (4.0f, 19.0f); p.lineTo (20.0f, 19.0f);
                 p.startNewSubPath (4.0f, 15.5f); p.lineTo (20.0f, 5.0f);

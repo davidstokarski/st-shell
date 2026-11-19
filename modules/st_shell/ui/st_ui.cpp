@@ -8,3 +8,4 @@
 #include "ModulationTrails.cpp"
 
 #include "Popover.cpp"
+#include "MultiView.cpp"

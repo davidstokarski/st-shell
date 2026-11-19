@@ -26,6 +26,11 @@ void ProcessorBase::unregisterInstance()
     InstanceRegistry::get().remove (this);
 }
 
+uint64_t ProcessorBase::getInstanceUid() const
+{
+    return InstanceRegistry::get().getUid (this);
+}
+
 void ProcessorBase::updateTrackProperties (const TrackProperties& p)
 {
     {

@@ -13,3 +13,4 @@
 #include "NativeMenu.h"
 
 #include "Popover.h"
+#include "MultiView.h"

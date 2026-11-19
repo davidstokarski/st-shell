@@ -1,40 +1,59 @@
 #pragma once
 
+#include "SharedInstances.h"
+
 namespace st
 {
 
 class ProcessorBase;
 
-/** Every ST plugin instance of this plugin binary in this process, for cross-instance features:
-    instance lists, editing another instance's parameters, collision analysis between tracks,
-    using another instance's spectrum.
+/** Every ST plug-in instance in the process — this plug-in's and the other ST plug-ins' (through the shared
+    registry, see SharedInstances.h) — for cross-instance features: the multiview (st::MultiView), editing
+    another instance, collision analysis, sharing spectra.
 
-    ProcessorBase registers itself on construction and unregisters on destruction, so a plugin gets this for
-    free. Each instance has a session-unique number (1, 2, 3... in creation order) and the track name /
-    colour the host reports (AudioProcessor::updateTrackProperties).
+    ProcessorBase registers itself on construction and unregisters on destruction, so a plug-in gets this for
+    free. Instances are identified by a process-unique `uid`. Each has a kind (plug-in name), a number per
+    kind (1, 2, 3... in creation order), and the host's track name / colour (updateTrackProperties).
 
-    Threading: message thread. Listeners are called synchronously on the message thread for removals (so UI
-    holding another instance can drop it before it is destroyed) and asynchronously for everything else.
-    If an instance is destroyed off the message thread the removal is announced asynchronously instead —
-    UI should therefore also hold instances through juce::WeakReference<ProcessorBase>. */
+    Instances of this binary are also available as ProcessorBase* (`getInstances`, Info::local). Instances of
+    other binaries are reached only through their C api (Info::api / ctx, used by MultiView's remote modules).
+
+    Threading: message thread. Listeners are told synchronously on the message thread when an instance goes
+    away (`instanceRemoved`: drop everything that refers to it, never call into it again) and asynchronously
+    about everything else (`instancesChanged`). */
 class InstanceRegistry : private juce::AsyncUpdater
 {
 public:
     struct Listener
     {
         virtual ~Listener() = default;
-        /** The list, a track name or a track colour changed. */
+        /** Instances were added, or a track name / colour changed. */
         virtual void instancesChanged() = 0;
-        /** `instance` is about to be destroyed: drop every reference to it now. */
-        virtual void instanceRemoved (ProcessorBase* instance) { juce::ignoreUnused (instance); instancesChanged(); }
+        /** Instance `uid` is gone or about to be destroyed (`local` is set when it's one of this binary's). */
+        virtual void instanceRemoved (uint64_t uid, ProcessorBase* local) { juce::ignoreUnused (uid, local); instancesChanged(); }
     };
 
-    /** The process-wide registry (lives while any instance or holder exists). */
+    struct Info
+    {
+        uint64_t uid = 0;
+        juce::String kind, track, label;   // label: track name, or "<kind> <number>"
+        juce::Colour trackColour;          // transparent if the host doesn't say
+        int number = 0;
+        ProcessorBase* local = nullptr;    // set for instances of this binary
+        const shared::InstanceApi* api = nullptr;
+        void* ctx = nullptr;
+    };
+
+    /** This binary's registry (lives while the binary is loaded). */
     static InstanceRegistry& get();
 
-    /** Snapshot of the registered instances, in creation order. */
+    /** This binary's instances, in creation order. */
     juce::Array<ProcessorBase*> getInstances() const;
-    int getNumInstances() const;
+    /** Every ST instance in the process (all plug-ins), in creation order. */
+    std::vector<Info> getAllInstances() const;
+    int getNumInstances() const;   // all plug-ins
+    bool isAlive (uint64_t uid) const;
+    uint64_t getUid (const ProcessorBase*) const;
 
     void addListener (Listener* l)    { listeners.add (l); }
     void removeListener (Listener* l) { listeners.remove (l); }
@@ -42,17 +61,26 @@ public:
     // called by ProcessorBase
     int add (ProcessorBase*);
     void remove (ProcessorBase*);
-    void changed() { triggerAsyncUpdate(); }
-    /** Delivers a pending (async) change notification now (tests, offline use). */
+    void changed();
+    /** Delivers pending (async) change notifications now (tests, offline use). */
     void flush() { handleUpdateNowIfNeeded(); }
 
+    ~InstanceRegistry() override;
+
 private:
-    InstanceRegistry() = default;
+    InstanceRegistry();
     mutable juce::CriticalSection lock;
     juce::Array<ProcessorBase*> instances;
+    std::map<const ProcessorBase*, uint64_t> uids;
+    std::map<uint64_t, ProcessorBase*> removedLocal;
+    std::vector<uint64_t> pendingRemovals;
     int nextNumber = 1;
     juce::ListenerList<Listener> listeners;
-    void handleAsyncUpdate() override { listeners.call ([] (Listener& l) { l.instancesChanged(); }); }
+
+    static void sharedListener (void* self, int event, uint64_t uid);
+    void handleShared (int event, uint64_t uid);
+    void dispatchRemovals();
+    void handleAsyncUpdate() override;
 };
 
 } // namespace st

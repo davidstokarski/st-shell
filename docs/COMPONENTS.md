@@ -64,13 +64,25 @@ filter / EQ displays.
 | `Reverb` | 8 types (Room, Chamber, Plate, Hall, Cathedral, Spring, Ambience, Bloom); runs at base rate internally when fed oversampled audio; `isSilent()`. |
 | `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `DelayLine`, `EnvelopeFollower`, `LinearSmoother` | Building blocks; per-sample APIs need the caller's `ScopedNoDenormals`. |
 
-## Cross-instance — `state/InstanceRegistry.h`
+## Cross-instance and the multiview — `state/InstanceRegistry.h`, `state/SharedInstances.h`, `ui/MultiView.h`
 
-`InstanceRegistry::get()` lists every instance of this plugin binary in the process (ProcessorBase registers itself).
-Each has `getInstanceNumber()`, the host's `getTrackName()` / `getTrackColour()` (from `updateTrackProperties`) and
-`getInstanceLabel()`. Listeners get `instancesChanged()` (async) and `instanceRemoved (p)` synchronously on the message
-thread before `p` is destroyed — drop every reference there. Hold instances via `juce::WeakReference<ProcessorBase>`.
-Used by ST EQ's instance list, collision display and EQ Match reference.
+Every ST plug-in is its own binary (own JUCE, own shell), so cross-plug-in features go through one process-wide,
+plain-C registry (`st::shared::Registry`, found by name through the Objective-C runtime; layout frozen, versioned).
+`InstanceRegistry::get()` is this binary's view of it: `getAllInstances()` lists every ST instance in the process
+(kind, number, host track name / colour, `local` ProcessorBase* for this binary's own), `getInstances()` only this
+binary's. ProcessorBase registers itself; call `unregisterInstance()` first thing in your processor's destructor.
+Listeners get `instancesChanged()` (async) and `instanceRemoved (uid, local)` synchronously on the message thread
+before the instance is destroyed — drop it and never call into it again.
+
+**Multiview** (`st::MultiView`): a full-editor overlay with one row per track (grouped by the host's track name;
+Logic sends it to AUs as the context name) and every ST plug-in on that track as a module side by side,
+`Options::leftmostKind` first (both plug-ins use "ST EQ"). Modules come from
+`ProcessorBase::createStripView()` / `getStripWidth (height)`. A module of this binary is the real component; a
+module of another binary is a remote view: its owner renders it off screen into pixels and gets mouse events
+forwarded (no keyboard, menus open natively at the mouse). So keep strip views to knobs / displays / small
+self-handling switches, and never capture the mouse. Hover grows a row; zoom, search, pins, track list,
+sideways scrolling, `Options::glowFor` for a red module glow. Open it from `HeaderBar::setMultiViewCallback` (ST Sat)
+or your own button (ST EQ's bottom bar). Tested across binaries in ST EQ's tests (they load the ST Sat AU).
 
 ## Adding a component
 
