@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#include <map>
 
 using namespace st::dsp;
 
@@ -697,10 +696,10 @@ void testFiltersAndUtils()
 }
 
 //==============================================================================
-std::map<std::string, double> gHighBandWorst;
 
-/** Cuts and shelves anywhere up to Nyquist, every slope: the digital response must follow the analog one through
-    the pass band and the knee (no bumps / dips), up to 95 % of Nyquist. */
+/** Cuts, shelves and bells up to 0.42 fs, every slope: the digital response must follow the analog one through the
+    pass band and the knee (no bumps / dips), up to 95 % of Nyquist (regression: a 24 dB/oct high cut at 17-20 kHz
+    bulged by 2 dB). Extreme settings (Q 6, cutoff at Nyquist) are reported only. */
 void testEqDesignHighBand()
 {
     std::printf ("EqDesign near Nyquist (cuts / shelves, all slopes)\n");
@@ -711,6 +710,8 @@ void testEqDesignHighBand()
     for (const auto& sh : shapes)
     {
         double worst = 0.0, wf = 0, wq = 0, whz = 0, wfs = 0; int wo = 0;
+        double extreme = 0.0, typical = 0.0;   // typical: Q <= 1, <= 48 dB/oct
+        bool stable = true;
         for (double fs : { 44100.0, 48000.0, 96000.0 })
             for (double frac : { 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.43, 0.46 })
                 for (double q : { 0.5, 0.7071, 1.0, 2.0, 6.0 })
@@ -721,39 +722,33 @@ void testEqDesignHighBand()
                         EqBandSpec spec { sh.shape, f, 9.0, q, order };
                         const auto a = designAnalog (spec);
                         const auto d = designDigital (a, fs);
+                        for (int i = 0; i < d.numSections; ++i)
+                        {
+                            const auto& c = d.sections[(size_t) i];
+                            stable &= std::abs (c.a2) < 1.0 && std::abs (c.a1) < 1.0 + c.a2 + 1.0e-9 && std::isfinite (c.b0 + c.b1 + c.b2);
+                        }
                         for (int k = 0; k < 240; ++k)
                         {
                             const double hz = 20.0 * std::pow (0.95 * 0.5 * fs / 20.0, k / 239.0);
                             const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
                             if (ma < -12.0) continue;
+                            const bool practical = q <= 2.0 && frac <= 0.42;
+                            if (! practical) { extreme = std::max (extreme, std::abs (ma - md)); continue; }
+                            if (q <= 1.0 && order <= 8) typical = std::max (typical, std::abs (ma - md));
                             if (std::abs (ma - md) > worst) { worst = std::abs (ma - md); wf = f; wq = q; wo = order; whz = hz; wfs = fs; }
                         }
                     }
-        std::printf ("  %-10s worst |analog - digital| (pass band + knee, to 0.95 Nyquist): %.2f dB (f %g q %g order %d at %g Hz, fs %g)\n",
-                     sh.name, worst, wf, wq, wo, whz, wfs);
-        gHighBandWorst[sh.name] = worst;
+        std::printf ("  %-10s cutoff <= 0.42 fs: Q <= 1 & <= 48 dB/oct %.2f dB | Q <= 2 all slopes %.2f dB (f %g q %g order %d at %g Hz, fs %g) | extremes %.2f dB\n",
+                     sh.name, typical, worst, wf, wq, wo, whz, wfs, extreme);
+        const bool cut = sh.shape == EqShape::highCut || sh.shape == EqShape::lowCut;
+        const bool bell = sh.shape == EqShape::bell;
+        check (stable, fmt ("%s near Nyquist: every section stable", sh.name));
+        check (typical < (cut ? 1.3 : (bell ? 0.6 : 0.8)), fmt ("%s near Nyquist (Q <= 1, <= 48 dB/oct) within tolerance (%.2f dB)", sh.name, typical));
+        check (worst < (cut ? 2.0 : (bell ? 0.6 : 0.8)), fmt ("%s near Nyquist (Q <= 2, all slopes) within tolerance (%.2f dB)", sh.name, worst));
     }
 }
 
-void probeHighCut()
-{
-    using namespace st::dsp::eq;
-    for (double f : { 12000.0, 17000.0, 20000.0 })
-    {
-        const double fs = 48000.0;
-        EqBandSpec spec { EqShape::highCut, f, 0.0, 1.0, 4 };
-        const auto a = designAnalog (spec);
-        const auto d = designDigital (a, fs);
-        std::printf ("  probe highCut %g Hz 24 dB/oct Q1 @48k\n", f);
-        for (double hz : { 2000.0, 6000.0, 10000.0, 13000.0, 15000.0, 17000.0, 19000.0, 21000.0, 22800.0 })
-        {
-            std::printf ("    %6.0f Hz: analog %7.2f digital %7.2f |", hz, toDb (a.magnitude (hz)), toDb (std::abs (d.response (hz, fs))));
-            for (int i = 0; i < a.numSections; ++i)
-                std::printf ("  s%d a %6.2f d %6.2f", i, toDb (std::abs (a.sections[(size_t) i].response (st::dsp::kTwoPi * hz))), toDb (std::abs (d.sections[(size_t) i].response (hz, fs))));
-            std::printf ("\n");
-        }
-    }
-}
+
 
 void testEqDesign()
 {
@@ -981,7 +976,6 @@ int main()
     testCompressor();
     testOversampler();
     testEqDesign();
-    probeHighCut();
     testEqDesignHighBand();
     testConvolver();
     testStft();
