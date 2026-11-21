@@ -522,10 +522,20 @@ void MultiView::rebuildRows()
     const auto infos = InstanceRegistry::get().getAllInstances();
     const uint64_t ownUid = own.getInstanceUid();
 
-    // modules: keep the ones we have, create new ones, drop the gone ones
+    auto rowKey = [] (const InstanceRegistry::Info& info)
+    {
+        return info.track.isNotEmpty() ? "t:" + info.track : "u:" + juce::String ((juce::int64) info.uid);
+    };
+    // Options::requiredKind: only tracks that have a module of that kind
+    std::set<juce::String> wantedRows;
+    for (auto& info : infos)
+        if (options.requiredKind.isEmpty() || info.kind == options.requiredKind) wantedRows.insert (rowKey (info));
+
+    // modules: keep the ones we have, create new ones, drop the gone ones (and the ones on unwanted tracks)
     std::set<uint64_t> alive;
     for (auto& info : infos)
     {
+        if (wantedRows.count (rowKey (info)) == 0) continue;
         alive.insert (info.uid);
         if (modules.count (info.uid) == 0)
         {
@@ -550,13 +560,14 @@ void MultiView::rebuildRows()
     }
 
     // group by track (no track name: a row each), keep row objects (their size animation) by key
-    struct Group { juce::String key, label; juce::Colour colour; std::vector<Module*> mods; uint64_t firstUid = ~0ull; bool own = false; };
+    struct Group { juce::String key, label; juce::Colour colour; std::vector<Module*> mods; uint64_t firstUid = ~0ull; bool own = false;
+                   int order = std::numeric_limits<int>::max(); };
     std::vector<Group> groups;
     for (auto& info : infos)
     {
         auto mit = modules.find (info.uid);
         if (mit == modules.end()) continue;
-        const auto key = info.track.isNotEmpty() ? "t:" + info.track : "u:" + juce::String ((juce::int64) info.uid);
+        const auto key = rowKey (info);
         auto g = std::find_if (groups.begin(), groups.end(), [&] (const Group& x) { return x.key == key; });
         if (g == groups.end())
         {
@@ -566,6 +577,7 @@ void MultiView::rebuildRows()
         g->mods.push_back (mit->second.get());
         g->firstUid = std::min (g->firstUid, info.uid);
         g->own |= info.uid == ownUid;
+        if (options.orderFor && info.local != nullptr) g->order = std::min (g->order, options.orderFor (*info.local));
         if (g->colour.isTransparent() && ! info.trackColour.isTransparent()) g->colour = info.trackColour;
     }
     const auto& t = Theme::get();
@@ -587,6 +599,7 @@ void MultiView::rebuildRows()
         const bool pa = pinned.contains (a.key), pb = pinned.contains (b.key);
         if (pa != pb) return pa;
         if (sortByName) return a.label.compareNatural (b.label) < 0;
+        if (a.order != b.order) return a.order < b.order;
         return a.firstUid < b.firstUid;
     });
 
@@ -691,11 +704,12 @@ void MultiView::paint (juce::Graphics& g)
     g.drawText ("ST", juce::Rectangle<float> (18.0f, 0.0f, 30.0f, (float) headerHeight), juce::Justification::centredLeft, false);
     g.setFont (fonts::medium (14.0f));
     g.setColour (t.accent);
-    g.drawText ("Multiview", juce::Rectangle<float> (42.0f, 0.0f, 90.0f, (float) headerHeight), juce::Justification::centredLeft, false);
+    const float titleW = std::ceil (fonts::stringWidth (fonts::medium (14.0f), options.title)) + 12.0f;
+    g.drawText (options.title, juce::Rectangle<float> (42.0f, 0.0f, titleW, (float) headerHeight), juce::Justification::centredLeft, false);
     g.setFont (fonts::regular (13.0f));
     g.setColour (t.textDim);
     g.drawText (juce::String (rows.size()) + (rows.size() == 1 ? " track" : " tracks") + ", " + juce::String (modules.size()) + " plug-ins",
-                juce::Rectangle<float> (134.0f, 0.0f, 200.0f, (float) headerHeight), juce::Justification::centredLeft, false);
+                juce::Rectangle<float> (42.0f + titleW, 0.0f, 200.0f, (float) headerHeight), juce::Justification::centredLeft, false);
 
     if (showSidebar)
     {

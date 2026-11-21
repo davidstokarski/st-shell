@@ -24,6 +24,14 @@ public:
         juce::String leftmostKind = "ST EQ";
         /** Optional red glow (0..1) for a module of this plug-in (e.g. spectral collision with `own`). */
         std::function<float (ProcessorBase&)> glowFor;
+        /** Only tracks with at least one module of this kind are shown (empty = every track). The other ST
+            plug-ins on those tracks are still shown next to it (ST DC: only the drum tracks). */
+        juce::String requiredKind;
+        /** Optional row order: rows are sorted by the lowest key of their modules of this plug-in (rows without
+            one go last, in creation order). Pins still come first. E.g. ST DC sorts by drum part. */
+        std::function<int (ProcessorBase&)> orderFor;
+        /** Title in the multiview header (after the "ST" mark). */
+        juce::String title = "Multiview";
     };
 
     explicit MultiView (ProcessorBase& own);

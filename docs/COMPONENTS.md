@@ -76,7 +76,9 @@ before the instance is destroyed — drop it and never call into it again.
 
 **Multiview** (`st::MultiView`): a full-editor overlay with one row per track (grouped by the host's track name;
 Logic sends it to AUs as the context name) and every ST plug-in on that track as a module side by side,
-`Options::leftmostKind` first (both plug-ins use "ST EQ"). Modules come from
+`Options::leftmostKind` first (ST EQ and ST Sat use "ST EQ"). `Options::requiredKind` shows only tracks that have a
+module of that kind (with every other ST plug-in on them), `Options::orderFor` sorts rows by a key of this binary's
+instances, `Options::title` names the view (ST DC: "Drum Multiview", only drum tracks, in kit order). Modules come from
 `ProcessorBase::createStripView()` / `getStripWidth (height)`. A module of this binary is the real component; a
 module of another binary is a remote view: its owner renders it off screen into pixels and gets mouse events
 forwarded (no keyboard, menus open natively at the mouse). So keep strip views to knobs / displays / small

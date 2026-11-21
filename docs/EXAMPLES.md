@@ -22,6 +22,16 @@ pattern is done in practice.
 | Whole-plugin stress tests + PNG snapshot tool (incl. opening popovers) | `tests/PluginTests.cpp` |
 | Release packaging | `scripts/release.sh` |
 
+## ST DC (`../st-dc`)
+
+| Pattern | Where |
+|---|---|
+| Several compressor engines in one class; feedback designs solved to match the static curve | `Source/dsp/Compressor.cpp` |
+| Lock-free, non-consuming level / GR history for scrolling displays | `Source/dsp/Engine.h` (`LevelHistory`), `Source/ui/Display.cpp` (`HistoryReader`) |
+| Pro-style level display with a threshold handle, spectrum with a GR band, knee display | `Source/ui/Display.cpp` |
+| Plugin-specific multiview (only tracks with this plug-in, custom order and title) | `Source/PluginEditor.cpp` (`toggleMultiView`) |
+| Custom backdrop (procedural wood) replacing `EditorBase::paintBackground`, cached per pixel scale | `Source/PluginEditor.cpp`, `Source/ui/Style.cpp` |
+
 ## ST EQ (`../st-eq`)
 
 | Pattern | Where |
