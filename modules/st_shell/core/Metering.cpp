@@ -124,6 +124,13 @@ void AnalyzerSource::readLatest (float* dest, int n) const noexcept
         dest[i] = history[(size_t) ((w - (uint32_t) n + (uint32_t) i) & (uint32_t) (historySize - 1))];
 }
 
+void AnalyzerSource::readFrom (uint32_t position, float* dest, int n) const noexcept
+{
+    n = juce::jlimit (0, historySize, n);
+    for (int i = 0; i < n; ++i)
+        dest[i] = history[(size_t) ((position + (uint32_t) i) & (uint32_t) (historySize - 1))];
+}
+
 int AnalyzerSource::pull (float* dest, int max) noexcept
 {
     const int toRead = juce::jmin (max, fifo.getNumReady());
@@ -176,13 +183,18 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
     int got = 0;
     if (opts.nonConsuming)
     {
+        // Read exactly [lastHistory, w): continuous samples even when the audio thread writes meanwhile.
         const uint32_t w = source.getHistoryPosition();
-        const int fresh = historyPrimed ? (int) juce::jmin ((uint32_t) scratch.size(), w - lastHistory) : (int) juce::jmin ((uint32_t) scratch.size(), w);
+        const uint32_t avail = historyPrimed ? w - lastHistory : w;
+        const uint32_t limit = (uint32_t) juce::jmin ((int) scratch.size(), AnalyzerSource::historySize / 2);
+        const uint32_t start = avail > limit ? w - limit : (historyPrimed ? lastHistory : 0u);
+        const int fresh = (int) juce::jmin (avail, limit);
         historyPrimed = true;
         lastHistory = w;
+        got = fresh;
         if (fresh > 0)
         {
-            source.readLatest (scratch.data(), fresh);
+            source.readFrom (start, scratch.data(), fresh);
             for (int i = 0; i < fresh; ++i)
             {
                 ring[(size_t) ringPos] = scratch[(size_t) i];
@@ -191,21 +203,32 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
             newSamples += fresh;
         }
     }
-    else while ((got = source.pull (scratch.data(), (int) scratch.size())) > 0)
+    else
     {
-        for (int i = 0; i < got; ++i)
+        int n = 0;
+        while ((n = source.pull (scratch.data(), (int) scratch.size())) > 0)
         {
-            ring[(size_t) ringPos] = scratch[(size_t) i];
-            ringPos = (ringPos + 1) & (fftSize - 1);
+            for (int i = 0; i < n; ++i)
+            {
+                ring[(size_t) ringPos] = scratch[(size_t) i];
+                ringPos = (ringPos + 1) & (fftSize - 1);
+            }
+            newSamples += n;
+            got += n;
         }
-        newSamples += got;
     }
 
-    const float fall = (float) (opts.releaseDbPerSec * elapsedSeconds);
+    pendingSeconds += elapsedSeconds;
+    idleSeconds = got > 0 ? 0.0 : idleSeconds + elapsedSeconds;
 
     if (newSamples < (opts.hopSize > 0 ? opts.hopSize : fftSize / 8))
     {
-        // No fresh data: let the display decay gracefully.
+        // Audio is still arriving (just not a whole hop yet, e.g. big host buffers): hold, don't flicker.
+        if (idleSeconds < 0.12) return false;
+
+        // No data any more (transport stopped): let the display decay gracefully.
+        const float fall = (float) (opts.releaseDbPerSec * pendingSeconds);
+        pendingSeconds = 0.0;
         bool changed = false;
         for (auto& l : levels)
         {
@@ -217,6 +240,8 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
     }
 
     newSamples = 0;
+    const float fall = (float) (opts.releaseDbPerSec * juce::jmin (0.25, pendingSeconds));
+    pendingSeconds = 0.0;
 
     for (int i = 0; i < fftSize; ++i)
         fftData[(size_t) i] = ring[(size_t) ((ringPos + i) & (fftSize - 1))] * window[(size_t) i];

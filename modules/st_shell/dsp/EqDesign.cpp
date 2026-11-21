@@ -421,6 +421,160 @@ namespace
         return c;
     }
 
+
+    //==============================================================================
+    // Near Nyquist a section with fixed (impulse-invariant) poles can't follow the analog curve: a gently
+    // damped low pass ends up ~1 dB high over the whole top octave, resonant ones bump and dip. There we
+    // re-fit poles and zeros together: |H|^2 = B(phi) / A(phi), both linear in (phi0, phi1, phi2) with
+    // phi1 = sin^2(w/2), solved by iterated, re-weighted linear least squares (equation error, Steiglitz-McBride
+    // style) on the relative error, then factored back into a stable, minimum-phase biquad. The result is
+    // used only if it beats the matched design.
+    bool solveLinear (double (&m)[5][6], int n, double (&x)[5]) noexcept
+    {
+        for (int col = 0; col < n; ++col)
+        {
+            int piv = col;
+            for (int r = col + 1; r < n; ++r) if (std::abs (m[r][col]) > std::abs (m[piv][col])) piv = r;
+            if (std::abs (m[piv][col]) < 1.0e-300) return false;
+            if (piv != col) for (int k = 0; k <= n; ++k) std::swap (m[col][k], m[piv][k]);
+            for (int r = 0; r < n; ++r)
+            {
+                if (r == col) continue;
+                const double f = m[r][col] / m[col][col];
+                for (int k = col; k <= n; ++k) m[r][k] -= f * m[col][k];
+            }
+        }
+        for (int r = 0; r < n; ++r) x[r] = m[r][n] / m[r][r];
+        return true;
+    }
+
+    /** Max |dB error| of a digital section against the analog one, where the analog is above `floorDb`, to 0.95 Nyquist. */
+    double sectionError (const AnalogSection& s, const BiquadCoeffs& c, double fs) noexcept
+    {
+        double peak = 0.0, worst = 0.0;
+        constexpr int n = 48;
+        double ma[n];
+        for (int i = 0; i < n; ++i)
+        {
+            const double hz = 0.475 * fs * std::pow (0.002, 1.0 - (double) i / (n - 1));
+            ma[i] = safeDb (std::abs (s.response (kTwoPi * hz)));
+            peak = std::max (peak, ma[i]);
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            if (ma[i] < peak - 30.0) continue;
+            const double hz = 0.475 * fs * std::pow (0.002, 1.0 - (double) i / (n - 1));
+            worst = std::max (worst, std::abs (ma[i] - safeDb (std::abs (c.response (hz, fs)))));
+        }
+        return worst;
+    }
+
+    BiquadCoeffs refineNearNyquist (const AnalogSection& s, const BiquadCoeffs& matched, double fs) noexcept
+    {
+        if (s.firstOrder || s.allPass) return matched;
+        // zeros on the frequency axis (notches) are matched exactly already; nothing to gain
+        if (std::abs (s.n1) < 1.0e-15 && s.n2 > 0.0 && s.n0 > 0.0) return matched;
+
+        const double T = 1.0 / fs;
+        const double wp = std::sqrt (std::max (1.0e-18, s.d0));
+        const double wz = std::abs (s.n2) > 1.0e-15 ? std::sqrt (std::abs (s.n0 / s.n2)) : 0.0;
+        if (std::max (wp, wz) * T < kBilinearLimit) return matched;
+
+        // numerator basis: free, zero at DC (B0 = 0), or double zero at DC (B ~ phi1^2)
+        const bool dcZero = std::abs (s.n0) < 1.0e-300;
+        const bool dcDouble = dcZero && std::abs (s.n1) < 1.0e-300;
+        const int nb = dcDouble ? 1 : (dcZero ? 2 : 3);
+
+        constexpr int nGrid = 40;
+        double phi1[nGrid], tgt[nGrid], wgt[nGrid], tMax = 0.0;
+        for (int i = 0; i < nGrid; ++i)
+        {
+            const double w = i == 0 ? 0.0 : (i == 1 ? kPi : kPi * std::pow (0.003, 1.0 - (double) (i - 2) / (nGrid - 3)));
+            phi1[i] = std::pow (std::sin (0.5 * w), 2.0);
+            tgt[i] = std::norm (s.response (w * fs));
+            wgt[i] = i == 0 ? 20.0 : (i == 1 ? 2.0 : 1.0);
+            tMax = std::max (tMax, tgt[i]);
+        }
+        auto basisB = [&] (int k, double p1) -> double
+        {
+            const double p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
+            if (dcDouble) return -4.0 * p1 * p1;
+            if (dcZero) return k == 0 ? p1 : p2;
+            return k == 0 ? p0 : (k == 1 ? p1 : p2);
+        };
+
+        // start from the matched denominator, normalised to A(phi=0) = 1
+        const double mA0 = std::pow (1.0 + matched.a1 + matched.a2, 2.0);
+        if (mA0 < 1.0e-12) return matched;
+        double A1 = std::pow (1.0 - matched.a1 + matched.a2, 2.0) / mA0, A2 = -4.0 * matched.a2 / mA0;
+        double B[3] = {};
+
+        for (int iter = 0; iter < 6; ++iter)
+        {
+            const int n = nb + 2;
+            double M[5][6] = {};
+            for (int i = 0; i < nGrid; ++i)
+            {
+                const double p1 = phi1[i], p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
+                const double aPrev = std::max (1.0e-12, p0 + A1 * p1 + A2 * p2);
+                const double t = tgt[i];
+                // residual: sum B_k b_k - t (A1 p1 + A2 p2) - t p0, relative to t * aPrev
+                const double scale = wgt[i] / ((t + 1.0e-6 * tMax) * aPrev);
+                double row[5];
+                for (int k = 0; k < nb; ++k) row[k] = basisB (k, p1) * scale;
+                row[nb] = -t * p1 * scale;
+                row[nb + 1] = -t * p2 * scale;
+                const double rhs = t * p0 * scale;
+                for (int a = 0; a < n; ++a)
+                {
+                    M[a][n] += row[a] * rhs;
+                    for (int b = 0; b < n; ++b) M[a][b] += row[a] * row[b];
+                }
+            }
+            double x[5] = {};
+            if (! solveLinear (M, n, x)) return matched;
+            for (int k = 0; k < nb; ++k) B[k] = x[k];
+            A1 = x[nb];
+            A2 = x[nb + 1];
+        }
+
+        // factor the denominator: p = 1 + a1 + a2, m = 1 - a1 + a2 = p sqrt(A1), a2 = -A2 p^2 / 4
+        if (! (A1 > 0.0) || ! std::isfinite (A1 + A2)) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (! (A1 > 0.0) || ! std::isf\n", wp / kTwoPi); return matched; }
+        const double sA1 = std::sqrt (A1);
+        double p;
+        if (std::abs (A2) < 1.0e-12) p = 2.0 / (1.0 + sA1);
+        else
+        {
+            const double disc = (1.0 + sA1) * (1.0 + sA1) + 4.0 * A2;
+            if (disc < 0.0) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (disc < 0.0) return matched\n", wp / kTwoPi); return matched; }
+            p = (-(1.0 + sA1) + std::sqrt (disc)) / A2;
+        }
+        if (! (p > 0.0) || ! std::isfinite (p)) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (! (p > 0.0) || ! std::isfi\n", wp / kTwoPi); return matched; }
+        BiquadCoeffs c;
+        c.a2 = -A2 * p * p / 4.0;
+        c.a1 = 0.5 * (p - p * sA1);
+        if (! (std::abs (c.a2) < 0.9995 && std::abs (c.a1) < 1.0 + c.a2 - 1.0e-6)) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (! (std::abs (c.a2) < 0.999\n", wp / kTwoPi); return matched; }
+
+        // numerator from |B|^2 in (phi0, phi1, phi2) form, scaled back (A was normalised by p^2)
+        const double sc = p * p;
+        double Bf0, Bf1, Bf2;
+        if (dcDouble)    { Bf0 = 0.0; Bf1 = -4.0 * B[0]; Bf2 = B[0]; }   // -4 phi1^2 = phi2 - 4 phi1
+        else if (dcZero) { Bf0 = 0.0; Bf1 = B[0]; Bf2 = B[1]; }
+        else             { Bf0 = B[0]; Bf1 = B[1]; Bf2 = B[2]; }
+        Bf0 *= sc; Bf1 *= sc; Bf2 *= sc;
+        if (Bf0 < 0.0 || Bf1 < 0.0) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (Bf0 < 0.0 || Bf1 < 0.0) re\n", wp / kTwoPi); return matched; }
+        const double sb0 = std::sqrt (Bf0), sb1 = std::sqrt (Bf1);
+        const double W = 0.5 * (sb0 + sb1);
+        if (W * W + Bf2 < 0.0) { if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f rejected: if (W * W + Bf2 < 0.0) return \n", wp / kTwoPi); return matched; }
+        c.b0 = 0.5 * (W + std::sqrt (W * W + Bf2));
+        c.b1 = 0.5 * (sb0 - sb1);
+        c.b2 = c.b0 > 1.0e-300 ? -Bf2 / (4.0 * c.b0) : 0.0;
+        if (! std::isfinite (c.b0 + c.b1 + c.b2)) return matched;
+
+        if (std::getenv ("ST_EQ_DEBUG")) std::fprintf (stderr, "refine wp %.0f: refit err %.3f matched err %.3f\n", wp / kTwoPi, sectionError (s, c, fs), sectionError (s, matched, fs));
+        return sectionError (s, c, fs) < sectionError (s, matched, fs) ? c : matched;
+    }
+
     BiquadCoeffs invert (BiquadCoeffs c) noexcept
     {
         if (std::abs (c.b2) > 0.99995 * std::abs (c.b0)) c.b2 = std::copysign (0.99995 * std::abs (c.b0), c.b2);   // keep poles inside
@@ -455,11 +609,11 @@ BiquadCoeffs matchSection (const AnalogSection& s, double fs) noexcept
                 AnalogSection r;
                 r.n2 = 1.0 / s.n2; r.n1 = s.d1 / s.n2; r.n0 = s.d0 / s.n2;
                 r.d1 = s.n1 / s.n2; r.d0 = s.n0 / s.n2;
-                return invert (matchCore (r, fs));
+                return refineNearNyquist (s, invert (matchCore (r, fs)), fs);
             }
         }
     }
-    return matchCore (s, fs);
+    return refineNearNyquist (s, matchCore (s, fs), fs);
 }
 
 Digital designDigital (const Analog& a, double sampleRate) noexcept

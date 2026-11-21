@@ -54,6 +54,10 @@ public:
     static constexpr int historySize = 1 << 14;
     uint32_t getHistoryPosition() const noexcept { return historyWrite.load (std::memory_order_acquire); }
     void readLatest (float* dest, int n) const noexcept;
+    /** Copies n <= historySize samples starting at absolute history position `position` (as counted by
+        getHistoryPosition). Readers that track their own position use this, so a block written between their
+        position read and this call can't make them skip or repeat samples. */
+    void readFrom (uint32_t position, float* dest, int n) const noexcept;
     double getSampleRate() const noexcept { return sampleRate.load(); }
 
     void setActive (bool shouldBeActive) noexcept { active.store (shouldBeActive); }
@@ -112,6 +116,7 @@ private:
     int ringPos = 0, fftSize = 0, newSamples = 0;
     uint32_t lastHistory = 0;
     bool historyPrimed = false;
+    double pendingSeconds = 0.0, idleSeconds = 0.0;   // ballistics time since the last update / without any data
     double lastSampleRate = 0.0;
     void rebuildMapping (double sr);
 };
