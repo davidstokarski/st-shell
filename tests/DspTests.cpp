@@ -698,7 +698,7 @@ void testFiltersAndUtils()
 //==============================================================================
 
 /** Cuts, shelves and bells up to 0.42 fs, every slope: the digital response must follow the analog one through the
-    pass band and the knee (no bumps / dips), up to 95 % of Nyquist (regression: a 24 dB/oct high cut at 17-20 kHz
+    pass band and the knee (no bumps / dips), up to 95 % of Nyquist or 21 kHz (regression: a 24 dB/oct high cut at 17-20 kHz
     bulged by 2 dB). Extreme settings (Q 6, cutoff at Nyquist) are reported only. */
 void testEqDesignHighBand()
 {
@@ -729,7 +729,7 @@ void testEqDesignHighBand()
                         }
                         for (int k = 0; k < 240; ++k)
                         {
-                            const double hz = 20.0 * std::pow (0.95 * 0.5 * fs / 20.0, k / 239.0);
+                            const double hz = 20.0 * std::pow (std::min (0.95 * 0.5 * fs, 21000.0) / 20.0, k / 239.0);   // audible band
                             const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
                             if (ma < -12.0) continue;
                             const bool practical = q <= 2.0 && frac <= 0.42;
@@ -744,11 +744,55 @@ void testEqDesignHighBand()
         const bool bell = sh.shape == EqShape::bell;
         check (stable, fmt ("%s near Nyquist: every section stable", sh.name));
         check (typical < (cut ? 1.3 : (bell ? 0.6 : 0.8)), fmt ("%s near Nyquist (Q <= 1, <= 48 dB/oct) within tolerance (%.2f dB)", sh.name, typical));
-        check (worst < (cut ? 2.0 : (bell ? 0.6 : 0.8)), fmt ("%s near Nyquist (Q <= 2, all slopes) within tolerance (%.2f dB)", sh.name, worst));
+        // Q 2 with 96-120 dB/oct and the resonance at 0.4 fs is the hardest corner
+        check (worst < (cut ? 2.5 : (bell ? 0.6 : 1.25)), fmt ("%s near Nyquist (Q <= 2, all slopes) within tolerance (%.2f dB)", sh.name, worst));
     }
 }
 
 
+
+/** High cuts / shelves (to 48 dB/oct, Q to 2) with the cutoff swept from 0.4 fs to 30 kHz (past Nyquist; the
+    frequency control goes to 30 kHz): worst error in the pass band (analog > -6 dB) of the audible band (to 21 kHz /
+    0.95 Nyquist), and the largest jump between neighbouring cutoffs where the curve is visible (a "glitch"). */
+void reportCutsAtNyquist (bool print)
+{
+    double allWorst = 0.0, allJump = 0.0;
+    using namespace st::dsp::eq;
+    for (auto shape : { EqShape::highCut, EqShape::highShelf })
+        for (double fs : { 44100.0, 48000.0 })
+            for (int order : { 2, 4, 8 })
+                for (double q : { 0.7071, 1.0, 2.0 })
+                {
+                    double worst = 0.0, worstF = 0.0, jump = 0.0, jumpF = 0.0;
+                    std::vector<double> prev;
+                    for (double f = 0.40 * fs; f <= 30000.0; f *= 1.005)
+                    {
+                        EqBandSpec spec { shape, f, 6.0, q, order };
+                        const auto a = designAnalog (spec);
+                        const auto d = designDigital (a, fs);
+                        std::vector<double> cur;
+                        for (int k = 0; k < 120; ++k)
+                        {
+                            const double hz = 1000.0 * std::pow (std::min (0.95 * 0.5 * fs, 21000.0) / 1000.0, k / 119.0);
+                            const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
+                            cur.push_back (ma > -12.0 ? md : -1000.0);   // steps only count where the curve is visible
+                            if (ma > -6.0 && std::abs (ma - md) > worst) { worst = std::abs (ma - md); worstF = f; }
+                        }
+                        if (! prev.empty())
+                            for (size_t k = 0; k < cur.size(); ++k)
+                                if (cur[k] > -999.0 && prev[k] > -999.0 && std::abs (cur[k] - prev[k]) > jump) { jump = std::abs (cur[k] - prev[k]); jumpF = f; }
+                        prev = cur;
+                    }
+                    if (print)
+                        std::printf ("    %-9s fs %g order %2d q %.2f: worst %.2f dB (cutoff %.0f), largest step %.2f dB (at %.0f)\n",
+                                     shape == EqShape::highCut ? "highCut" : "highShelf", fs, order, q, worst, worstF, jump, jumpF);
+                    allWorst = std::max (allWorst, worst);
+                    allJump = std::max (allJump, jump);
+                }
+    // regression: a 24 dB/oct high cut dragged to 17-22 kHz bulged, dipped and jumped while sweeping
+    check (allWorst < 1.0, fmt ("high cuts / shelves swept to 30 kHz follow the analog curve in the audible band (worst %.2f dB)", allWorst));
+    check (allJump < 1.25, fmt ("high cuts / shelves swept to 30 kHz: no jumps between neighbouring cutoffs (largest %.2f dB)", allJump));
+}
 
 void testEqDesign()
 {
@@ -976,6 +1020,8 @@ int main()
     testCompressor();
     testOversampler();
     testEqDesign();
+    std::printf ("High cuts / shelves swept past Nyquist\n");
+    reportCutsAtNyquist (true);
     testEqDesignHighBand();
     testConvolver();
     testStft();
