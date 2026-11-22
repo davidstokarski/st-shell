@@ -1,8 +1,8 @@
-// The process-wide ST registry (macOS). Every ST plug-in binary finds the same instance through the
-// Objective-C runtime, which is shared by everything in the process: the first binary registers a class
-// with a fixed name and hangs the registry's address on it (keyed by a selector, which is also uniqued
-// process-wide). Class registration is atomic, so two binaries loading at once still agree on one registry.
-// The registry is never freed (it must outlive every binary that might use it).
+// The process-wide ST registry and multiview pins (macOS). Every ST plug-in binary finds the same instances
+// through the Objective-C runtime, which is shared by everything in the process: the first binary registers a
+// class with a fixed name and hangs the structure's address on it (keyed by a selector, which is also uniqued
+// process-wide). Class registration is atomic, so two binaries loading at once still agree on one structure.
+// The structures are never freed (they must outlive every binary that might use them).
 
 #include "st_shell.h"
 
@@ -14,35 +14,47 @@
 namespace st::shared
 {
 
-static Registry* createRegistry()
+static void initRecursiveMutex (pthread_mutex_t& m)
+{
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init (&attr);
+    pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init (&m, &attr);
+    pthread_mutexattr_destroy (&attr);
+}
+
+static void* createRegistry()
 {
     auto* r = static_cast<Registry*> (std::calloc (1, sizeof (Registry)));
     r->magic = kMagic;
     r->version = kVersion;
     r->size = (uint32_t) sizeof (Registry);
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init (&attr);
-    pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init (&r->lock, &attr);
-    pthread_mutexattr_destroy (&attr);
+    initRecursiveMutex (r->lock);
     r->nextUid = 1;
     return r;
 }
 
-Registry& getSharedRegistry()
+static void* createPins()
 {
-    static Registry* cached = nullptr;
-    if (cached != nullptr) return *cached;
+    auto* p = static_cast<Pins*> (std::calloc (1, sizeof (Pins)));
+    p->magic = kPinsMagic;
+    p->version = kPinsVersion;
+    p->size = (uint32_t) sizeof (Pins);
+    initRecursiveMutex (p->lock);
+    return p;
+}
 
-    static const char* className = "STShellSharedRegistryV1";
-    const SEL key = sel_registerName ("stShellSharedRegistryV1");
+/** The process-wide object published under `className` (created with `create` by the first binary that asks). */
+static void* findOrPublish (const char* className, const char* selectorName, void* (*create)())
+{
+    const SEL key = sel_registerName (selectorName);
 
     if (objc_getClass (className) == nil)
     {
         if (Class c = objc_allocateClassPair ([NSObject class], className, 0))
         {
             objc_registerClassPair (c);
-            objc_setAssociatedObject (c, key, [NSValue valueWithPointer: createRegistry()], OBJC_ASSOCIATION_RETAIN);
+            objc_setAssociatedObject (c, key, [NSValue valueWithPointer: create()], OBJC_ASSOCIATION_RETAIN);
         }
     }
 
@@ -53,16 +65,38 @@ Registry& getSharedRegistry()
         value = objc_getAssociatedObject (cls, key);
         if (value == nil) std::this_thread::yield();
     }
+    return value != nil ? [value pointerValue] : nullptr;
+}
 
-    auto* r = value != nil ? static_cast<Registry*> ([value pointerValue]) : nullptr;
+Registry& getSharedRegistry()
+{
+    static Registry* cached = nullptr;
+    if (cached != nullptr) return *cached;
+
+    auto* r = static_cast<Registry*> (findOrPublish ("STShellSharedRegistryV1", "stShellSharedRegistryV1", &createRegistry));
     if (r == nullptr || r->magic != kMagic || r->version != kVersion || r->size != (uint32_t) sizeof (Registry))
     {
         // Not ours (or a different layout): use a private registry rather than corrupt a foreign one.
-        static Registry* privateRegistry = createRegistry();
+        static Registry* privateRegistry = static_cast<Registry*> (createRegistry());
         r = privateRegistry;
     }
     cached = r;
     return *r;
+}
+
+Pins& getSharedPins()
+{
+    static Pins* cached = nullptr;
+    if (cached != nullptr) return *cached;
+
+    auto* p = static_cast<Pins*> (findOrPublish ("STShellSharedPinsV1", "stShellSharedPinsV1", &createPins));
+    if (p == nullptr || p->magic != kPinsMagic || p->version != kPinsVersion || p->size != (uint32_t) sizeof (Pins))
+    {
+        static Pins* privatePins = static_cast<Pins*> (createPins());
+        p = privatePins;
+    }
+    cached = p;
+    return *p;
 }
 
 } // namespace st::shared

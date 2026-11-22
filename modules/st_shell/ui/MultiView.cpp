@@ -489,6 +489,17 @@ juce::StringArray MultiView::getRowKinds (int row) const
     return k;
 }
 
+bool MultiView::isRowPinned (int row) const
+{
+    return juce::isPositiveAndBelow (row, (int) rows.size()) && pinned.contains (rows[(size_t) row]->key);
+}
+
+void MultiView::setRowPinned (int row, bool shouldBePinned)
+{
+    if (juce::isPositiveAndBelow (row, (int) rows.size()) && isRowPinned (row) != shouldBePinned)
+        togglePin (rows[(size_t) row]->key);
+}
+
 juce::Component* MultiView::getModuleComponent (uint64_t uid) const
 {
     auto it = modules.find (uid);
@@ -519,13 +530,27 @@ void MultiView::instanceRemoved (uint64_t uid, ProcessorBase*)
 
 void MultiView::rebuildRows()
 {
-    const auto infos = InstanceRegistry::get().getAllInstances();
+    auto& registry = InstanceRegistry::get();
+    const auto infos = registry.getAllInstances();
     const uint64_t ownUid = own.getInstanceUid();
 
     auto rowKey = [] (const InstanceRegistry::Info& info)
     {
         return info.track.isNotEmpty() ? "t:" + info.track : "u:" + juce::String ((juce::int64) info.uid);
     };
+
+    // Pins are shared by every ST plug-in. Drop the ones whose track has no ST plug-in left at all (checked
+    // against every instance, not just the rows shown here: with requiredKind a pinned track without that
+    // kind is hidden here but stays pinned everywhere else).
+    {
+        std::set<juce::String> allRows;
+        for (auto& info : infos) allRows.insert (rowKey (info));
+        juce::StringArray stale;
+        for (auto& k : registry.getPinnedRows())
+            if (allRows.count (k) == 0) stale.add (k);
+        if (! stale.isEmpty() && ! infos.empty()) registry.unpinRows (stale);
+        pinned = registry.getPinnedRows();
+    }
     // Options::requiredKind: only tracks that have a module of that kind
     std::set<juce::String> wantedRows;
     for (auto& info : infos)
@@ -618,8 +643,6 @@ void MultiView::rebuildRows()
     }
     for (auto& r : rows) if (r != nullptr) r->setModules ({});   // rows that went away let go of their modules
     rows = std::move (next);
-    for (int i = pinned.size(); --i >= 0;)
-        if (std::none_of (rows.begin(), rows.end(), [&] (const auto& r) { return r->key == pinned[i]; })) pinned.remove (i);
     for (auto& r : rows) holder.addAndMakeVisible (*r);
     layoutRows();
     repaint();
@@ -654,8 +677,7 @@ void MultiView::scrollToRow (int index)
 
 void MultiView::togglePin (const juce::String& key)
 {
-    if (pinned.contains (key)) pinned.removeString (key);
-    else pinned.add (key);
+    InstanceRegistry::get().setRowPinned (key, ! pinned.contains (key));   // every ST plug-in's multiview follows
     rebuildRows();
 }
 
@@ -665,7 +687,14 @@ void MultiView::showMenu()
     m.addItem (juce::PopupMenu::Item ("Sort by Track Name").setTicked (sortByName).setAction ([this] { sortByName = ! sortByName; rebuildRows(); }));
     m.addItem (juce::PopupMenu::Item ("Show Track List").setTicked (showSidebar).setAction ([this] { showSidebar = ! showSidebar; resized(); }));
     m.addSeparator();
-    m.addItem (juce::PopupMenu::Item ("Unpin All").setEnabled (! pinned.isEmpty()).setAction ([this] { pinned.clear(); rebuildRows(); }));
+    // Unpin All: the rows shown here (pinned tracks this multiview filters out stay pinned elsewhere)
+    juce::StringArray shownPins;
+    for (auto& r : rows) if (pinned.contains (r->key)) shownPins.add (r->key);
+    m.addItem (juce::PopupMenu::Item ("Unpin All").setEnabled (! shownPins.isEmpty()).setAction ([this, shownPins]
+    {
+        InstanceRegistry::get().unpinRows (shownPins);
+        rebuildRows();
+    }));
     st::showMenu (m, menuButton.get());
 }
 

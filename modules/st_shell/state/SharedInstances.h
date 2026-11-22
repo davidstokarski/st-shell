@@ -56,7 +56,8 @@ struct Instance
     const InstanceApi* api;
 };
 
-/** event: 1 = added, 2 = removed, 3 = changed (track name / colour). May be called on any thread. */
+/** event: 1 = added, 2 = removed, 3 = changed (track name / colour), 4 = multiview pins changed (see Pins).
+    May be called on any thread. */
 using ListenerFn = void (*) (void* userData, int event, uint64_t uid);
 
 struct Registry
@@ -73,5 +74,27 @@ struct Registry
 
 /** The registry of this process (created by whichever ST binary asks first). */
 Registry& getSharedRegistry();
+
+//==============================================================================
+/*  Multiview pins, shared by every ST plug-in binary (pin a track in any ST plug-in: it's pinned in all of them).
+    A set of row keys (MultiView's: "t:<track name>" or "u:<uid>"), NUL-terminated UTF-8. Separate from Registry
+    so the registry layout (and older binaries using it) stay as they are. Changes are announced through the
+    registry's listeners with event kEventPinsChanged (older binaries treat it as a plain "changed"). */
+
+constexpr uint32_t kPinsMagic = 0x53545031;   // 'STP1'
+constexpr uint32_t kPinsVersion = 1;
+constexpr int kMaxPins = 128, kPinKeySize = 256;
+constexpr int kEventPinsChanged = 4;
+
+struct Pins
+{
+    uint32_t magic, version, size;
+    pthread_mutex_t lock;
+    int count;
+    char keys[kMaxPins][kPinKeySize];
+};
+
+/** The pins of this process (created by whichever ST binary asks first). */
+Pins& getSharedPins();
 
 } // namespace st::shared

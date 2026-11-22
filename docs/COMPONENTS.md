@@ -83,7 +83,11 @@ instances, `Options::title` names the view (ST DC: "Drum Multiview", only drum t
 module of another binary is a remote view: its owner renders it off screen into pixels and gets mouse events
 forwarded (no keyboard, menus open natively at the mouse). So keep strip views to knobs / displays / small
 self-handling switches, and never capture the mouse. Hover grows a row; zoom, search, pins, track list,
-sideways scrolling, `Options::glowFor` for a red module glow. Open it from `HeaderBar::setMultiViewCallback` (ST Sat)
+sideways scrolling, `Options::glowFor` for a red module glow. **Pins are shared** by every ST plug-in in the process
+(`InstanceRegistry::get/isRowPinned / setRowPinned / unpinRows`, a second plain-C structure `st::shared::Pins` next to
+the registry): pin a track in any plug-in's multiview and it's pinned in all of them. With `requiredKind`, a pinned
+track without that kind isn't shown (it stays pinned for the others) and "Unpin All" unpins only the rows shown.
+Pins live in memory, not in the session. Open it from `HeaderBar::setMultiViewCallback` (ST Sat)
 or your own button (ST EQ's bottom bar). Tested across binaries in ST EQ's tests (they load the ST Sat AU).
 
 ## Adding a component

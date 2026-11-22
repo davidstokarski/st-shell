@@ -12,7 +12,8 @@ namespace st
     - Rows are grouped by the host's track name (instances without one get a row each), labelled with the
       track name and colour; the row with this instance is highlighted.
     - The row under the mouse grows a little; header: row-size zoom, search, options (sort, unpin),
-      track-list toggle, close (Esc). Pins keep rows at the top. The track list on the right boxes the rows
+      track-list toggle, close (Esc). Pins keep rows at the top; they are shared by every ST plug-in in the
+      process (InstanceRegistry::setRowPinned), so pinning a track here pins it in every plug-in's multiview. The track list on the right boxes the rows
       in view and scrolls to a row on click. Rows wider than the view scroll sideways (chevrons, Shift-wheel).
 
     Meant to cover the whole editor (add it to the editor content at full size, delete it in onClose). */
@@ -25,7 +26,8 @@ public:
         /** Optional red glow (0..1) for a module of this plug-in (e.g. spectral collision with `own`). */
         std::function<float (ProcessorBase&)> glowFor;
         /** Only tracks with at least one module of this kind are shown (empty = every track). The other ST
-            plug-ins on those tracks are still shown next to it (ST DC: only the drum tracks). */
+            plug-ins on those tracks are still shown next to it (ST DC: only the drum tracks). A pinned track
+            without this kind is not shown (it stays pinned in the other plug-ins' multiviews). */
         juce::String requiredKind;
         /** Optional row order: rows are sorted by the lowest key of their modules of this plug-in (rows without
             one go last, in creation order). Pins still come first. E.g. ST DC sorts by drum part. */
@@ -49,6 +51,10 @@ public:
     juce::Component* getModuleComponent (uint64_t uid) const;
     /** Forces the magnified row (tests / renders; normally the row under the mouse). */
     void setHoveredInstance (uint64_t uid) { forcedHover = uid; }
+    /** Row `row` is pinned (to the top). */
+    bool isRowPinned (int row) const;
+    /** Pins / unpins row `row` (as its pin button does: in every ST plug-in's multiview). */
+    void setRowPinned (int row, bool shouldBePinned);
     /** Rebuilds the rows now (normally on registry changes). */
     void refresh() { rebuildRows(); }
 
@@ -76,7 +82,7 @@ private:
     juce::TextEditor search;
     bool showSidebar = true, sortByName = false;
     uint64_t forcedHover = 0;
-    juce::StringArray pinned;   // row keys
+    juce::StringArray pinned;   // row keys: a copy of the shared pins (InstanceRegistry), refreshed by rebuildRows
     int ticks = 0;
 
     static constexpr int headerHeight = 44, sidebarWidth = 150, nameWidth = 150;

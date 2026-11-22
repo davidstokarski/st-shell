@@ -55,6 +55,15 @@ public:
     bool isAlive (uint64_t uid) const;
     uint64_t getUid (const ProcessorBase*) const;
 
+    /** Multiview pins (row keys, see MultiView), shared by every ST plug-in in the process: pin a track in one
+        plug-in's multiview and it's pinned in all of them. Changes reach every binary's listeners
+        (instancesChanged, async). In memory only (not saved with the session). */
+    juce::StringArray getPinnedRows() const;
+    bool isRowPinned (const juce::String& key) const;
+    void setRowPinned (const juce::String& key, bool pinned);
+    /** Unpins several rows at once (one notification). */
+    void unpinRows (const juce::StringArray& keys);
+
     void addListener (Listener* l)    { listeners.add (l); }
     void removeListener (Listener* l) { listeners.remove (l); }
 

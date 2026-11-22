@@ -30,6 +30,20 @@ namespace
         for (int i = 0; i < n; ++i) fns[i] (data[i], event, uid);
     }
 
+    struct PinsLock
+    {
+        shared::Pins& p;
+        explicit PinsLock (shared::Pins& pins) : p (pins) { pthread_mutex_lock (&p.lock); }
+        ~PinsLock() { pthread_mutex_unlock (&p.lock); }
+    };
+
+    int findPin (const shared::Pins& p, const char* key)
+    {
+        for (int i = 0; i < p.count; ++i)
+            if (std::strncmp (p.keys[i], key, (size_t) shared::kPinKeySize) == 0) return i;
+        return -1;
+    }
+
     void copyString (const juce::String& s, char* dest, int size)
     {
         if (dest == nullptr || size <= 0) return;
@@ -403,6 +417,66 @@ void InstanceRegistry::remove (ProcessorBase* p)
     if (uid != 0) notifyShared (2, uid);
     const juce::ScopedLock sl (lock);
     removedLocal.erase (uid);
+}
+
+juce::StringArray InstanceRegistry::getPinnedRows() const
+{
+    auto& p = shared::getSharedPins();
+    PinsLock pl (p);
+    juce::StringArray keys;
+    for (int i = 0; i < p.count; ++i) keys.add (juce::String::fromUTF8 (p.keys[i]));
+    return keys;
+}
+
+bool InstanceRegistry::isRowPinned (const juce::String& key) const
+{
+    auto& p = shared::getSharedPins();
+    PinsLock pl (p);
+    return findPin (p, key.toRawUTF8()) >= 0;
+}
+
+void InstanceRegistry::setRowPinned (const juce::String& key, bool pin)
+{
+    const auto utf8 = key.toRawUTF8();
+    if (key.isEmpty() || std::strlen (utf8) >= (size_t) shared::kPinKeySize) return;   // can't be stored whole
+    bool changedPins = false;
+    {
+        auto& p = shared::getSharedPins();
+        PinsLock pl (p);
+        const int i = findPin (p, utf8);
+        if (pin && i < 0 && p.count < shared::kMaxPins)
+        {
+            std::strncpy (p.keys[p.count], utf8, (size_t) shared::kPinKeySize - 1);
+            p.keys[p.count][shared::kPinKeySize - 1] = 0;
+            ++p.count;
+            changedPins = true;
+        }
+        else if (! pin && i >= 0)
+        {
+            for (int j = i; j < p.count - 1; ++j) std::memcpy (p.keys[j], p.keys[j + 1], (size_t) shared::kPinKeySize);
+            --p.count;
+            changedPins = true;
+        }
+    }
+    if (changedPins) notifyShared (shared::kEventPinsChanged, 0);
+}
+
+void InstanceRegistry::unpinRows (const juce::StringArray& keys)
+{
+    bool changedPins = false;
+    {
+        auto& p = shared::getSharedPins();
+        PinsLock pl (p);
+        for (auto& k : keys)
+        {
+            const int i = findPin (p, k.toRawUTF8());
+            if (i < 0) continue;
+            for (int j = i; j < p.count - 1; ++j) std::memcpy (p.keys[j], p.keys[j + 1], (size_t) shared::kPinKeySize);
+            --p.count;
+            changedPins = true;
+        }
+    }
+    if (changedPins) notifyShared (shared::kEventPinsChanged, 0);
 }
 
 void InstanceRegistry::changed()
