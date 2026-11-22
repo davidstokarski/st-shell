@@ -77,8 +77,13 @@ namespace eq
     Analog designAnalog (const EqBandSpec&) noexcept;
 
     /** Digital (analog-matched) realisation. The overall gain is folded into the first section. */
-    Digital designDigital (const Analog&, double sampleRate) noexcept;
-    inline Digital designDigital (const EqBandSpec& s, double sampleRate) noexcept { return designDigital (designAnalog (s), sampleRate); }
+    /** How cut filters (low / high cut) are made digital. bilinear (default): pre-warped bilinear, neat at any
+        cutoff (exact corner, never wiggles or jumps, falls away faster right at Nyquist). matched: analog-matched
+        like the other shapes (for designs whose error is corrected afterwards, e.g. a natural-phase FIR: its
+        error stays bounded, the bilinear one goes to -inf at Nyquist). */
+    enum class CutStyle { bilinear, matched };
+    Digital designDigital (const Analog&, double sampleRate, CutStyle = CutStyle::bilinear) noexcept;
+    inline Digital designDigital (const EqBandSpec& s, double sampleRate, CutStyle style = CutStyle::bilinear) noexcept { return designDigital (designAnalog (s), sampleRate, style); }
 
     /** Matched digital biquad for one analog section (exposed for tests / custom prototypes). */
     BiquadCoeffs matchSection (const AnalogSection&, double sampleRate) noexcept;

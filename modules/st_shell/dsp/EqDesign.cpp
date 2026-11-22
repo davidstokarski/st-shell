@@ -421,361 +421,6 @@ namespace
         return c;
     }
 
-
-    //==============================================================================
-    // Near Nyquist a section with fixed (impulse-invariant) poles can't follow the analog curve: a gently
-    // damped low pass ends up ~1 dB high over the whole top octave, resonant ones bump and dip. There we
-    // re-fit poles and zeros together: |H|^2 = B(phi) / A(phi), both linear in (phi0, phi1, phi2) with
-    // phi1 = sin^2(w/2), solved by iterated, re-weighted linear least squares (equation error, Steiglitz-McBride
-    // style) on the relative error, then factored back into a stable, minimum-phase biquad. The result is
-    // used only if it beats the matched design.
-    bool solveLinear (double (&m)[5][6], int n, double (&x)[5]) noexcept
-    {
-        for (int col = 0; col < n; ++col)
-        {
-            int piv = col;
-            for (int r = col + 1; r < n; ++r) if (std::abs (m[r][col]) > std::abs (m[piv][col])) piv = r;
-            if (std::abs (m[piv][col]) < 1.0e-300) return false;
-            if (piv != col) for (int k = 0; k <= n; ++k) std::swap (m[col][k], m[piv][k]);
-            for (int r = 0; r < n; ++r)
-            {
-                if (r == col) continue;
-                const double f = m[r][col] / m[col][col];
-                for (int k = col; k <= n; ++k) m[r][k] -= f * m[col][k];
-            }
-        }
-        for (int r = 0; r < n; ++r) x[r] = m[r][n] / m[r][r];
-        return true;
-    }
-
-    constexpr double kNearNyquist = 0.2;   // sections above 0.2 fs get the joint pole / zero refit
-
-    /** Evaluation / fitting grid (rad/sample): DC, Nyquist, a log-spaced low part and a dense linear top band
-        (where the matched design needs help and where narrow resonances live). */
-    double gridW (int i, int n) noexcept
-    {
-        const int nLow = n / 4;
-        if (i == 0) return 0.0;
-        if (i == 1) return kPi;
-        if (i < nLow) return 0.2 * kPi * std::pow (0.01, 1.0 - (double) (i - 2) / (double) std::max (1, nLow - 3));
-        return kPi * (0.2 + 0.75 * (double) (i - nLow) / (double) std::max (1, n - nLow - 1));   // 0.1 .. 0.475 fs
-    }
-
-    /** Fits a biquad's squared magnitude to targets `tgt` at phi1 = sin^2(w/2) (weights `wgt`), starting from the
-        denominator of `start`. numerKind: 0 free numerator, 1 zero at DC, 2 double zero at DC. False if the result
-        can't be factored into a stable, minimum-phase biquad. */
-    bool fitBiquad (const double* phi1, const double* tgt, const double* wgt, int nGrid, int numerKind,
-                    const BiquadCoeffs& start, BiquadCoeffs& out) noexcept
-    {
-        const bool dcDouble = numerKind == 2, dcZero = numerKind >= 1;
-        const int nb = dcDouble ? 1 : (dcZero ? 2 : 3);
-        double tMax = 0.0;
-        for (int i = 0; i < nGrid; ++i) tMax = std::max (tMax, tgt[i]);
-        auto basisB = [&] (int k, double p1) -> double
-        {
-            const double p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
-            if (dcDouble) return -4.0 * p1 * p1;
-            if (dcZero) return k == 0 ? p1 : p2;
-            return k == 0 ? p0 : (k == 1 ? p1 : p2);
-        };
-
-        // denominator normalised to A(phi=0) = 1
-        const double sA0 = std::pow (1.0 + start.a1 + start.a2, 2.0);
-        if (sA0 < 1.0e-12) return false;
-        double A1 = std::pow (1.0 - start.a1 + start.a2, 2.0) / sA0, A2 = -4.0 * start.a2 / sA0;
-        double B[3] = {};
-
-        for (int iter = 0; iter < 5; ++iter)
-        {
-            const int n = nb + 2;
-            double M[5][6] = {};
-            for (int i = 0; i < nGrid; ++i)
-            {
-                const double p1 = phi1[i], p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
-                const double aPrev = std::max (1.0e-12, p0 + A1 * p1 + A2 * p2);
-                const double t = tgt[i];
-                // residual sum B_k b_k - t (A1 p1 + A2 p2) - t p0, relative to t * aPrev (re-weighted each pass)
-                const double scale = wgt[i] / ((t + 1.0e-6 * tMax) * aPrev);
-                double row[5];
-                for (int k = 0; k < nb; ++k) row[k] = basisB (k, p1) * scale;
-                row[nb] = -t * p1 * scale;
-                row[nb + 1] = -t * p2 * scale;
-                const double rhs = t * p0 * scale;
-                for (int a = 0; a < n; ++a)
-                {
-                    M[a][n] += row[a] * rhs;
-                    for (int b = 0; b < n; ++b) M[a][b] += row[a] * row[b];
-                }
-            }
-            double x[5] = {};
-            if (! solveLinear (M, n, x)) return false;
-            for (int k = 0; k < nb; ++k) B[k] = x[k];
-            A1 = x[nb];
-            A2 = x[nb + 1];
-        }
-
-        // factor the denominator: p = 1 + a1 + a2, m = 1 - a1 + a2 = p sqrt(A1), a2 = -A2 p^2 / 4
-        if (! (A1 > 0.0) || ! std::isfinite (A1 + A2)) return false;
-        const double sA1 = std::sqrt (A1);
-        double p;
-        if (std::abs (A2) < 1.0e-12) p = 2.0 / (1.0 + sA1);
-        else
-        {
-            const double disc = (1.0 + sA1) * (1.0 + sA1) + 4.0 * A2;
-            if (disc < 0.0) return false;
-            p = (-(1.0 + sA1) + std::sqrt (disc)) / A2;
-        }
-        if (! (p > 0.0) || ! std::isfinite (p)) return false;
-        BiquadCoeffs c;
-        c.a2 = -A2 * p * p / 4.0;
-        c.a1 = 0.5 * (p - p * sA1);
-        if (! (std::abs (c.a2) < 0.9995 && std::abs (c.a1) < 1.0 + c.a2 - 1.0e-6)) return false;
-
-        // numerator from |B|^2 in (phi0, phi1, phi2) form, scaled back (A was normalised by p^2)
-        const double sc = p * p;
-        double Bf0, Bf1, Bf2;
-        if (dcDouble)    { Bf0 = 0.0; Bf1 = -4.0 * B[0]; Bf2 = B[0]; }   // -4 phi1^2 = phi2 - 4 phi1
-        else if (dcZero) { Bf0 = 0.0; Bf1 = B[0]; Bf2 = B[1]; }
-        else             { Bf0 = B[0]; Bf1 = B[1]; Bf2 = B[2]; }
-        Bf0 *= sc; Bf1 *= sc; Bf2 *= sc;
-        if (Bf0 < 0.0 || Bf1 < 0.0) return false;
-        const double sb0 = std::sqrt (Bf0), sb1 = std::sqrt (Bf1);
-        const double W = 0.5 * (sb0 + sb1);
-        if (W * W + Bf2 < 0.0) return false;
-        c.b0 = 0.5 * (W + std::sqrt (W * W + Bf2));
-        c.b1 = 0.5 * (sb0 - sb1);
-        c.b2 = c.b0 > 1.0e-300 ? -Bf2 / (4.0 * c.b0) : 0.0;
-        if (! std::isfinite (c.b0 + c.b1 + c.b2)) return false;
-        out = c;
-        return true;
-    }
-
-    /** Like fitBiquad with the denominator fixed (a1, a2): a linear least-squares fit of the numerator only. */
-    bool fitNumerator (const double* phi1, const double* tgt, const double* wgt, int nGrid, int numerKind,
-                       double a1, double a2, BiquadCoeffs& out) noexcept
-    {
-        const bool dcDouble = numerKind == 2, dcZero = numerKind >= 1;
-        const int nb = dcDouble ? 1 : (dcZero ? 2 : 3);
-        const double A0 = (1.0 + a1 + a2) * (1.0 + a1 + a2), A1 = (1.0 - a1 + a2) * (1.0 - a1 + a2), A2 = -4.0 * a2;
-        double tMax = 0.0;
-        for (int i = 0; i < nGrid; ++i) tMax = std::max (tMax, tgt[i]);
-        double M[5][6] = {};
-        for (int i = 0; i < nGrid; ++i)
-        {
-            const double p1 = phi1[i], p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
-            const double A = std::max (1.0e-30, A0 * p0 + A1 * p1 + A2 * p2);
-            const double t = tgt[i];
-            const double scale = wgt[i] / ((t + 1.0e-6 * tMax) * A);
-            double row[3];
-            for (int k = 0; k < nb; ++k)
-            {
-                const double b = dcDouble ? -4.0 * p1 * p1 : (dcZero ? (k == 0 ? p1 : p2) : (k == 0 ? p0 : (k == 1 ? p1 : p2)));
-                row[k] = b * scale;
-            }
-            const double rhs = t * A * scale;
-            for (int a = 0; a < nb; ++a)
-            {
-                M[a][nb] += row[a] * rhs;
-                for (int b = 0; b < nb; ++b) M[a][b] += row[a] * row[b];
-            }
-        }
-        double x[5] = {};
-        if (! solveLinear (M, nb, x)) return false;
-        double Bf0, Bf1, Bf2;
-        if (dcDouble)    { Bf0 = 0.0; Bf1 = -4.0 * x[0]; Bf2 = x[0]; }
-        else if (dcZero) { Bf0 = 0.0; Bf1 = x[0]; Bf2 = x[1]; }
-        else             { Bf0 = x[0]; Bf1 = x[1]; Bf2 = x[2]; }
-        if (Bf0 < 0.0 || Bf1 < 0.0) return false;
-        const double sb0 = std::sqrt (Bf0), sb1 = std::sqrt (Bf1);
-        const double W = 0.5 * (sb0 + sb1);
-        if (W * W + Bf2 < 0.0) return false;
-        BiquadCoeffs c;
-        c.a1 = a1; c.a2 = a2;
-        c.b0 = 0.5 * (W + std::sqrt (W * W + Bf2));
-        c.b1 = 0.5 * (sb0 - sb1);
-        c.b2 = c.b0 > 1.0e-300 ? -Bf2 / (4.0 * c.b0) : 0.0;
-        if (! std::isfinite (c.b0 + c.b1 + c.b2)) return false;
-        out = c;
-        return true;
-    }
-
-    /** Accept a candidate only if it is better overall and doesn't worsen the peak error (e.g. a flattened resonance). */
-    bool betterFit (double rmsNew, double maxNew, double rmsOld, double maxOld) noexcept
-    {
-        return rmsNew < rmsOld - 1.0e-4 && maxNew <= maxOld + 0.05;
-    }
-
-    /** |H(e^jw)|^2 of a biquad at a grid point given cos w and cos 2w. */
-    inline double mag2 (const BiquadCoeffs& c, double cw, double c2w) noexcept
-    {
-        const double num = c.b0 * c.b0 + c.b1 * c.b1 + c.b2 * c.b2 + 2.0 * (c.b0 * c.b1 + c.b1 * c.b2) * cw + 2.0 * c.b0 * c.b2 * c2w;
-        const double den = 1.0 + c.a1 * c.a1 + c.a2 * c.a2 + 2.0 * (c.a1 + c.a1 * c.a2) * cw + 2.0 * c.a2 * c2w;
-        return num / std::max (1.0e-300, den);
-    }
-
-    /** Near Nyquist, improves a matched design (gain not yet applied) against the analog one (gain ignored).
-
-        A digital filter only exists up to Nyquist; near it the per-section matched design drifts (a 24 dB/oct high
-        cut at 17-20 kHz bulges by ~2 dB) and once a section's poles reach Nyquist it falls apart (tens of dB, and
-        jumps while the cutoff is swept). The analog curve up to Nyquist is always smooth, so:
-          A. starting from the matched design, each section near Nyquist is re-fitted (poles and zeros together)
-             to what the other sections leave missing (residual target), kept only if the whole cascade improves;
-          B. if that is still off, the near-Nyquist sections are rebuilt jointly from pass-through sections:
-             each in turn fits the residual, over a few passes (coordinate descent on the total response);
-          the better of A and B is kept, then one correction biquad is appended if it helps.
-        Per-section responses are cached on the grid, so trying a candidate costs one pass over the grid. */
-    void improveNearNyquist (Analog a, Digital& d, double fs) noexcept
-    {
-        a.gain = 1.0;
-        bool anyNear = false;
-        bool nearSection[kMaxSections] = {};
-        int kind[kMaxSections] = {};
-        for (int i = 0; i < a.numSections; ++i)
-        {
-            const auto& s = a.sections[(size_t) i];
-            if (s.allPass) return;
-            const double wp = s.firstOrder ? s.d0 : std::sqrt (std::max (0.0, s.d0));
-            const double wz = (! s.firstOrder && std::abs (s.n2) > 1.0e-15) ? std::sqrt (std::abs (s.n0 / s.n2)) : 0.0;
-            // re-fittable: second-order sections above 0.2 fs, except notches (zeros on the axis are exact already)
-            const bool notch = ! s.firstOrder && std::abs (s.n1) < 1.0e-15 && s.n2 > 0.0 && s.n0 > 0.0;
-            nearSection[i] = ! s.firstOrder && ! notch && std::max (wp, wz) / (kTwoPi * fs) >= kNearNyquist;
-            const bool dcZero = std::abs (s.n0) < 1.0e-300;
-            kind[i] = dcZero && std::abs (s.n1) < 1.0e-300 ? 2 : (dcZero ? 1 : 0);
-            anyNear |= nearSection[i];
-        }
-        if (! anyNear) return;
-
-        // one grid for fitting and scoring; scoring to 0.95 Nyquist or 21 kHz (what can be heard: at 96 kHz the
-        // band above 21 kHz must not be bought with errors below it), where the analog is within 30 dB of its peak
-        constexpr int n = 96;
-        const double wTop = std::min (0.95 * kPi, kTwoPi * 21000.0 / fs);
-        double w[n], cw[n], c2w[n], phi1[n], ta[n], maDb[n], fitW[n], peak = -1.0e9;
-        bool counts[n];
-        for (int k = 0; k < n; ++k)
-        {
-            w[k] = gridW (k, n);
-            cw[k] = std::cos (w[k]); c2w[k] = std::cos (2.0 * w[k]);
-            phi1[k] = std::pow (std::sin (0.5 * w[k]), 2.0);
-            ta[k] = std::norm (a.response (w[k] * fs / kTwoPi));
-            maDb[k] = 10.0 * std::log10 (std::max (1.0e-30, ta[k]));
-            if (w[k] <= wTop) peak = std::max (peak, maDb[k]);
-        }
-        // what counts: everything within 30 dB of the peak, and anything above -24 dB (a boosting shelf's
-        // resonance dip can be more than 30 dB below its peak and still matter)
-        const double floorDb = std::min (peak - 30.0, -24.0);
-        for (int k = 0; k < n; ++k)
-        {
-            counts[k] = w[k] <= wTop && maDb[k] >= floorDb;
-            fitW[k] = (k == 0 ? 20.0 : (k == 1 ? 2.0 : 1.0)) * (maDb[k] >= floorDb ? 1.0 : 0.02) * (w[k] <= wTop ? 1.0 : 0.1);
-        }
-
-        struct Cascade
-        {
-            Digital d;
-            double sec[kMaxSections][n];
-            double total[n];
-        };
-        auto evaluate = [&] (Cascade& c)
-        {
-            for (int k = 0; k < n; ++k) c.total[k] = 1.0;
-            for (int i = 0; i < c.d.numSections; ++i)
-                for (int k = 0; k < n; ++k) { c.sec[i][k] = mag2 (c.d.sections[(size_t) i], cw[k], c2w[k]); c.total[k] *= c.sec[i][k]; }
-        };
-        auto score = [&] (const double* t, double& worst)
-        {
-            double sum = 0.0; int count = 0; worst = 0.0;
-            for (int k = 0; k < n; ++k)
-            {
-                if (! counts[k]) continue;
-                const double e = maDb[k] - 10.0 * std::log10 (std::max (1.0e-30, t[k]));
-                sum += e * e; worst = std::max (worst, std::abs (e)); ++count;
-            }
-            return count > 0 ? std::sqrt (sum / count) : 0.0;
-        };
-        // one pass of coordinate descent: each near section fits the residual; `strict` keeps a fit only if
-        // RMS and peak error both improve, otherwise any RMS improvement is taken
-        auto descend = [&] (Cascade& c, double& rms, double& worst, bool strict)
-        {
-            double others[n], target[n], cand[n], trial[n];
-            for (int i = 0; i < c.d.numSections; ++i)
-            {
-                if (! nearSection[i]) continue;
-                for (int k = 0; k < n; ++k)
-                {
-                    double o = 1.0;
-                    for (int j = 0; j < c.d.numSections; ++j) if (j != i) o *= c.sec[j][k];
-                    others[k] = o;
-                    target[k] = std::clamp (ta[k] / std::max (1.0e-30, o), 1.0e-8, 1.0e8);
-                }
-                // candidates: a free fit, and (for a resonance at / past Nyquist, where no digital pole can be)
-                // the analog pole's damping with its frequency pinned just below Nyquist and only the zeros fitted
-                BiquadCoeffs fit;
-                double wTrial = 1.0e9, rTrial = 1.0e9;
-                auto consider = [&] (const BiquadCoeffs& f)
-                {
-                    double tr[n], cd[n];
-                    for (int k = 0; k < n; ++k) { cd[k] = mag2 (f, cw[k], c2w[k]); tr[k] = others[k] * cd[k]; }
-                    double wt = 0.0;
-                    const double rt = score (tr, wt);
-                    if (rt < rTrial) { rTrial = rt; wTrial = wt; fit = f; for (int k = 0; k < n; ++k) { cand[k] = cd[k]; trial[k] = tr[k]; } }
-                };
-                BiquadCoeffs f1;
-                if (fitBiquad (phi1, target, fitW, n, kind[i], c.d.sections[(size_t) i], f1)) consider (f1);
-                {
-                    const auto& as = a.sections[(size_t) i];
-                    const double wp = std::sqrt (std::max (1.0e-18, as.d0)), zeta = as.d1 / (2.0 * wp), T = 1.0 / fs;
-                    if (zeta < 1.0)
-                    {
-                        const double theta = std::min (wp * T * std::sqrt (1.0 - zeta * zeta), 0.97 * kPi);
-                        const double r = std::min (0.995, std::exp (-zeta * std::min (wp * T, 0.97 * kPi)));
-                        BiquadCoeffs f2;
-                        if (fitNumerator (phi1, target, fitW, n, kind[i], -2.0 * r * std::cos (theta), r * r, f2)) consider (f2);
-                    }
-                }
-                if (rTrial >= 1.0e9) continue;
-                if (strict ? betterFit (rTrial, wTrial, rms, worst) : rTrial < rms - 1.0e-4)
-                {
-                    c.d.sections[(size_t) i] = fit;
-                    for (int k = 0; k < n; ++k) { c.sec[i][k] = cand[k]; c.total[k] = trial[k]; }
-                    rms = rTrial; worst = wTrial;
-                }
-            }
-        };
-
-        // A: the matched design, refined
-        Cascade A;
-        A.d = d;
-        evaluate (A);
-        double maxA = 0.0, rmsA = score (A.total, maxA);
-        descend (A, rmsA, maxA, true);
-
-        // B: near-Nyquist sections rebuilt jointly (only when A is still visibly off)
-        if (rmsA > 0.15 || maxA > 0.5)
-        {
-            Cascade B;
-            B.d = d;
-            for (int i = 0; i < B.d.numSections; ++i) if (nearSection[i]) B.d.sections[(size_t) i] = BiquadCoeffs {};
-            evaluate (B);
-            double maxB = 0.0, rmsB = score (B.total, maxB);
-            for (int pass = 0; pass < 3; ++pass) descend (B, rmsB, maxB, false);
-            if (rmsB < rmsA && maxB < maxA + 0.1) { A = B; rmsA = rmsB; maxA = maxB; }
-        }
-        d = A.d;
-
-        // one correction biquad for what is left
-        if (d.numSections < 1 || d.numSections >= kMaxSections) return;
-        double tgt[n];
-        for (int k = 0; k < n; ++k) tgt[k] = std::clamp (ta[k] / std::max (1.0e-30, A.total[k]), 1.0e-4, 1.0e4);
-        BiquadCoeffs c;
-        if (! fitBiquad (phi1, tgt, fitW, n, 0, BiquadCoeffs {}, c)) return;
-        double trial[n];
-        for (int k = 0; k < n; ++k) trial[k] = A.total[k] * mag2 (c, cw[k], c2w[k]);
-        double maxT = 0.0;
-        const double rmsT = score (trial, maxT);
-        if (betterFit (rmsT, maxT, rmsA, maxA))
-            d.sections[(size_t) d.numSections++] = c;
-    }
-
     BiquadCoeffs invert (BiquadCoeffs c) noexcept
     {
         if (std::abs (c.b2) > 0.99995 * std::abs (c.b0)) c.b2 = std::copysign (0.99995 * std::abs (c.b0), c.b2);   // keep poles inside
@@ -817,18 +462,65 @@ BiquadCoeffs matchSection (const AnalogSection& s, double fs) noexcept
     return matchCore (s, fs);
 }
 
-Digital designDigital (const Analog& a, double sampleRate) noexcept
+namespace
+{
+    /** Cut filters (pure low-pass / high-pass sections): the bilinear transform, pre-warped so the corner lands exactly
+        where it is set. It maps the analog curve onto the digital frequency axis monotonically, so a cut can't wiggle,
+        bump or jump: corner, Q bump and slope are kept; the only difference from the analog curve is that a high cut
+        falls away faster right at the top, where the digital band ends (the classic digital cut). Analog-matching
+        cuts can't promise that near Nyquist (they bulged, rippled and jumped).
+        A corner towards / past Nyquist eases smoothly up to 0.99 of it, so a high cut dragged to 30 kHz slides off the
+        top continuously (raising a cut's cutoff only ever raises the curve).
+        Returns false for sections that aren't pure cuts. */
+    bool cutSection (const AnalogSection& s, double fs, BiquadCoeffs& c) noexcept
+    {
+        if (s.allPass) return false;
+        const bool lp1 = s.firstOrder && std::abs (s.n1) < 1.0e-300 && s.n0 > 0.0;
+        const bool hp1 = s.firstOrder && std::abs (s.n0) < 1.0e-300 && s.n1 > 0.0;
+        const bool lp2 = ! s.firstOrder && std::abs (s.n2) < 1.0e-300 && std::abs (s.n1) < 1.0e-300 && s.n0 > 0.0;
+        const bool hp2 = ! s.firstOrder && std::abs (s.n0) < 1.0e-300 && std::abs (s.n1) < 1.0e-300 && s.n2 > 0.0;
+        if (! (lp1 || hp1 || lp2 || hp2)) return false;
+
+        const double w0 = s.firstOrder ? s.d0 : std::sqrt (std::max (1.0e-18, s.d0));
+        const double wa = w0 / fs;   // corner, rad/sample
+        constexpr double knee = 0.8 * kPi, room = 0.19 * kPi;
+        const double past = wa <= knee ? 0.0 : std::tanh ((wa - knee) / room);   // 0 .. 1 as the corner passes the knee
+        const double wd = knee * (wa <= knee ? wa / knee : 1.0) + room * past;   // eases to 0.99 pi
+        const double K = w0 / std::tan (0.5 * wd);
+
+        if (s.firstOrder)
+        {
+            const double a0 = K + s.d0;
+            c.b0 = (s.n1 * K + s.n0) / a0;
+            c.b1 = (s.n0 - s.n1 * K) / a0;
+            c.b2 = 0.0;
+            c.a1 = (s.d0 - K) / a0;
+            c.a2 = 0.0;
+            return true;
+        }
+        const double d1 = s.d1;
+        const double K2 = K * K;
+        const double a0 = K2 + d1 * K + s.d0;
+        c.b0 = (s.n2 * K2 + s.n0) / a0;
+        c.b1 = 2.0 * (s.n0 - s.n2 * K2) / a0;
+        c.b2 = (s.n2 * K2 + s.n0) / a0;
+        c.a1 = 2.0 * (s.d0 - K2) / a0;
+        c.a2 = (K2 - d1 * K + s.d0) / a0;
+        return true;
+    }
+}
+
+Digital designDigital (const Analog& a, double sampleRate, CutStyle style) noexcept
 {
     Digital d;
     const double fs = sampleRate > 0.0 ? sampleRate : 44100.0;
     d.numSections = a.numSections;
     for (int i = 0; i < a.numSections; ++i)
-        d.sections[(size_t) i] = matchSection (a.sections[(size_t) i], fs);
+        if (style == CutStyle::matched || ! cutSection (a.sections[(size_t) i], fs, d.sections[(size_t) i]))
+            d.sections[(size_t) i] = matchSection (a.sections[(size_t) i], fs);
 
     if (d.numSections == 0 && std::abs (a.gain - 1.0) > 1.0e-12)
         d.numSections = 1;   // pure gain
-
-    improveNearNyquist (a, d, fs);
 
     if (d.numSections > 0)
     {

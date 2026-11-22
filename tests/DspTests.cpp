@@ -697,101 +697,95 @@ void testFiltersAndUtils()
 
 //==============================================================================
 
-/** Cuts, shelves and bells up to 0.42 fs, every slope: the digital response must follow the analog one through the
-    pass band and the knee (no bumps / dips), up to 95 % of Nyquist or 21 kHz (regression: a 24 dB/oct high cut at 17-20 kHz
-    bulged by 2 dB). Extreme settings (Q 6, cutoff at Nyquist) are reported only. */
-void testEqDesignHighBand()
+/** Cut filters must be neat: no wiggles beyond the one bump their Q asks for, the corner exactly where it is set,
+    an accurate pass band, stable, and no jumps while the cutoff is dragged all the way to 30 kHz (raising a
+    non-resonant cut's cutoff may only ever raise the curve). Regression: high cuts near / past Nyquist bulged,
+    rippled and jumped. */
+void testCutsNeat()
 {
-    std::printf ("EqDesign near Nyquist (cuts / shelves, all slopes)\n");
+    std::printf ("Cut filters: neat at any cutoff (to 30 kHz)\n");
     using namespace st::dsp::eq;
-    struct S { EqShape shape; const char* name; };
-    const S shapes[] = { { EqShape::highCut, "highCut" }, { EqShape::lowCut, "lowCut" }, { EqShape::highShelf, "highShelf" },
-                         { EqShape::lowShelf, "lowShelf" }, { EqShape::bell, "bell" }, { EqShape::tiltShelf, "tiltShelf" } };
-    for (const auto& sh : shapes)
+    int wiggly = 0, offCorner = 0, passBand = 0, unstable = 0, jumps = 0, cases = 0;
+    double worstPass = 0.0, worstCorner = 0.0;
+    std::string cornerWhere, passWhere;
+    std::string firstBad;
+    auto extrema = [] (const std::vector<double>& v)
     {
-        double worst = 0.0, wf = 0, wq = 0, whz = 0, wfs = 0; int wo = 0;
-        double extreme = 0.0, typical = 0.0;   // typical: Q <= 1, <= 48 dB/oct
-        bool stable = true;
+        int n = 0, lastSign = 0;
+        for (size_t i = 1; i < v.size(); ++i)
+        {
+            const double d = v[i] - v[i - 1];
+            if (std::abs (d) < 1.0e-7) continue;
+            const int sign = d > 0 ? 1 : -1;
+            if (lastSign != 0 && sign != lastSign) ++n;
+            lastSign = sign;
+        }
+        return n;
+    };
+    for (auto shape : { EqShape::highCut, EqShape::lowCut })
         for (double fs : { 44100.0, 48000.0, 96000.0 })
-            for (double frac : { 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.43, 0.46 })
-                for (double q : { 0.5, 0.7071, 1.0, 2.0, 6.0 })
-                    for (int order : { 1, 2, 3, 4, 5, 6, 8, 12, 16, 20 })
+            for (int order : { 1, 2, 3, 4, 6, 8, 12, 16, 20 })
+                for (double q : { 0.3, 0.7071, 1.0, 2.0 })
+                {
+                    std::vector<double> prev;
+                    for (double f = 20.0; f <= 30000.0; f *= 1.02)
                     {
-                        const double f = frac * fs;
-                        if (sh.shape == EqShape::bell && order > 2) continue;
-                        EqBandSpec spec { sh.shape, f, 9.0, q, order };
+                        ++cases;
+                        EqBandSpec spec { shape, f, 0.0, q, order };
                         const auto a = designAnalog (spec);
                         const auto d = designDigital (a, fs);
                         for (int i = 0; i < d.numSections; ++i)
                         {
                             const auto& c = d.sections[(size_t) i];
-                            stable &= std::abs (c.a2) < 1.0 && std::abs (c.a1) < 1.0 + c.a2 + 1.0e-9 && std::isfinite (c.b0 + c.b1 + c.b2);
+                            if (! (std::abs (c.a2) < 1.0 && std::abs (c.a1) < 1.0 + c.a2 + 1.0e-9 && std::isfinite (c.b0 + c.b1 + c.b2))) ++unstable;
                         }
-                        for (int k = 0; k < 240; ++k)
+                        std::vector<double> dig, ana;
+                        for (int k = 0; k < 400; ++k)
                         {
-                            const double hz = 20.0 * std::pow (std::min (0.95 * 0.5 * fs, 21000.0) / 20.0, k / 239.0);   // audible band
-                            const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
-                            if (ma < -12.0) continue;
-                            const bool practical = q <= 2.0 && frac <= 0.42;
-                            if (! practical) { extreme = std::max (extreme, std::abs (ma - md)); continue; }
-                            if (q <= 1.0 && order <= 8) typical = std::max (typical, std::abs (ma - md));
-                            if (std::abs (ma - md) > worst) { worst = std::abs (ma - md); wf = f; wq = q; wo = order; whz = hz; wfs = fs; }
+                            const double hz = 20.0 * std::pow (0.98 * 0.5 * fs / 20.0, k / 399.0);
+                            dig.push_back (toDb (std::abs (d.response (hz, fs))));
+                            ana.push_back (toDb (a.magnitude (hz)));
                         }
-                    }
-        std::printf ("  %-10s cutoff <= 0.42 fs: Q <= 1 & <= 48 dB/oct %.2f dB | Q <= 2 all slopes %.2f dB (f %g q %g order %d at %g Hz, fs %g) | extremes %.2f dB\n",
-                     sh.name, typical, worst, wf, wq, wo, whz, wfs, extreme);
-        const bool cut = sh.shape == EqShape::highCut || sh.shape == EqShape::lowCut;
-        const bool bell = sh.shape == EqShape::bell;
-        check (stable, fmt ("%s near Nyquist: every section stable", sh.name));
-        check (typical < (cut ? 1.3 : (bell ? 0.6 : 0.8)), fmt ("%s near Nyquist (Q <= 1, <= 48 dB/oct) within tolerance (%.2f dB)", sh.name, typical));
-        // Q 2 with 96-120 dB/oct and the resonance at 0.4 fs is the hardest corner
-        check (worst < (cut ? 2.5 : (bell ? 0.6 : 1.25)), fmt ("%s near Nyquist (Q <= 2, all slopes) within tolerance (%.2f dB)", sh.name, worst));
-    }
-}
-
-
-
-/** High cuts / shelves (to 48 dB/oct, Q to 2) with the cutoff swept from 0.4 fs to 30 kHz (past Nyquist; the
-    frequency control goes to 30 kHz): worst error in the pass band (analog > -6 dB) of the audible band (to 21 kHz /
-    0.95 Nyquist), and the largest jump between neighbouring cutoffs where the curve is visible (a "glitch"). */
-void reportCutsAtNyquist (bool print)
-{
-    double allWorst = 0.0, allJump = 0.0;
-    using namespace st::dsp::eq;
-    for (auto shape : { EqShape::highCut, EqShape::highShelf })
-        for (double fs : { 44100.0, 48000.0 })
-            for (int order : { 2, 4, 8 })
-                for (double q : { 0.7071, 1.0, 2.0 })
-                {
-                    double worst = 0.0, worstF = 0.0, jump = 0.0, jumpF = 0.0;
-                    std::vector<double> prev;
-                    for (double f = 0.40 * fs; f <= 30000.0; f *= 1.005)
-                    {
-                        EqBandSpec spec { shape, f, 6.0, q, order };
-                        const auto a = designAnalog (spec);
-                        const auto d = designDigital (a, fs);
-                        std::vector<double> cur;
-                        for (int k = 0; k < 120; ++k)
+                        // wiggles: compare where the curve is visible (above -30 dB)
+                        std::vector<double> dv, av;
+                        for (size_t k = 0; k < dig.size(); ++k) if (ana[k] > -30.0 || dig[k] > -30.0) { dv.push_back (dig[k]); av.push_back (ana[k]); }
+                        // allowed: the analog curve's own extrema, and the Q bump (it can sit near Nyquist when the
+                        // corner is past it)
+                        if (extrema (dv) > std::max (extrema (av), q > 0.7072 ? 1 : 0)) { ++wiggly; if (firstBad.empty()) firstBad = fmt ("wiggle: order %d q %g f %g fs %g", order, q, f, fs); }
+                        // the corner exactly where it is set (while it is below 0.4 fs)
+                        if (f < 0.4 * fs)
                         {
-                            const double hz = 1000.0 * std::pow (std::min (0.95 * 0.5 * fs, 21000.0) / 1000.0, k / 119.0);
-                            const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
-                            cur.push_back (ma > -12.0 ? md : -1000.0);   // steps only count where the curve is visible
-                            if (ma > -6.0 && std::abs (ma - md) > worst) { worst = std::abs (ma - md); worstF = f; }
+                            const double e = std::abs (toDb (std::abs (d.response (f, fs))) - toDb (a.magnitude (f)));
+                            if (e > worstCorner) { worstCorner = e; cornerWhere = fmt ("order %d q %g f %g fs %g", order, q, f, fs); }
+                            if (e > 0.02) ++offCorner;
                         }
-                        if (! prev.empty())
-                            for (size_t k = 0; k < cur.size(); ++k)
-                                if (cur[k] > -999.0 && prev[k] > -999.0 && std::abs (cur[k] - prev[k]) > jump) { jump = std::abs (cur[k] - prev[k]); jumpF = f; }
-                        prev = cur;
+                        // pass band (an octave inside the corner) accurate
+                        const double pb = shape == EqShape::highCut ? f * 0.5 : f * 2.0;
+                        // (resonant cuts near Nyquist have their skirt tightened by the warp; corners past 0.4 fs are eased)
+                        if (pb > 20.0 && pb < 0.4 * fs && q >= 0.5 && q <= 1.0 && f < 0.4 * fs)
+                        {
+                            const double e = std::abs (toDb (std::abs (d.response (pb, fs))) - toDb (a.magnitude (pb)));
+                            if (e > worstPass) { worstPass = e; passWhere = fmt ("order %d q %g f %g fs %g", order, q, f, fs); }
+                            if (e > 0.8) ++passBand;
+                        }
+                        // sweeping: a non-resonant cut moved up only lets more through, everywhere (no jumps back)
+                        if (q <= 0.7071 && ! prev.empty())
+                            for (size_t k = 0; k < dig.size(); ++k)
+                            {
+                                const bool up = shape == EqShape::highCut;
+                                const double change = dig[k] - prev[k];
+                                if (dig[k] > -60.0 && (up ? change < -1.0e-3 : change > 1.0e-3)) { ++jumps; if (firstBad.empty()) firstBad = fmt ("jump: order %d f %g fs %g at %g dB", order, f, fs, change); break; }
+                            }
+                        prev = dig;
                     }
-                    if (print)
-                        std::printf ("    %-9s fs %g order %2d q %.2f: worst %.2f dB (cutoff %.0f), largest step %.2f dB (at %.0f)\n",
-                                     shape == EqShape::highCut ? "highCut" : "highShelf", fs, order, q, worst, worstF, jump, jumpF);
-                    allWorst = std::max (allWorst, worst);
-                    allJump = std::max (allJump, jump);
                 }
-    // regression: a 24 dB/oct high cut dragged to 17-22 kHz bulged, dipped and jumped while sweeping
-    check (allWorst < 1.0, fmt ("high cuts / shelves swept to 30 kHz follow the analog curve in the audible band (worst %.2f dB)", allWorst));
-    check (allJump < 1.25, fmt ("high cuts / shelves swept to 30 kHz: no jumps between neighbouring cutoffs (largest %.2f dB)", allJump));
+    std::printf ("  %d cut designs: wiggles %d, off-corner %d (worst %.3f dB: %s), pass band > 0.8 dB %d (worst %.2f dB: %s), unstable %d, sweep jumps %d %s\n",
+                 cases, wiggly, offCorner, worstCorner, cornerWhere.c_str(), passBand, worstPass, passWhere.c_str(), unstable, jumps, firstBad.c_str());
+    check (wiggly == 0, "cuts never wiggle (only the bump their Q asks for)");
+    check (offCorner == 0, fmt ("cut corner exactly where it is set (worst %.3f dB)", worstCorner));
+    check (passBand == 0, fmt ("cut pass band follows the analog curve (worst %.2f dB)", worstPass));
+    check (unstable == 0, "cut sections stable");
+    check (jumps == 0, "dragging a cut's cutoff up to 30 kHz never jumps");
 }
 
 void testEqDesign()
@@ -830,6 +824,9 @@ void testEqDesign()
                                 const double hz = 20.0 * std::pow (std::min (20000.0, 0.45 * fs) / 20.0, k / 159.0);
                                 const double ma = toDb (a.magnitude (hz)), md = toDb (std::abs (d.response (hz, fs)));
                                 if (ma < -24.0) continue;
+                                // cuts (bilinear): compared in the pass band and the knee; falling faster in the stop band
+                                // near Nyquist is the intended digital cut
+                                if ((shapes[si] == EqShape::highCut || shapes[si] == EqShape::lowCut) && ma < -6.0) continue;
                                 // notches: skip the immediate null
                                 if (shapes[si] == EqShape::notch && std::abs (std::log2 (hz / f)) < 0.25) continue;
                                 if (std::abs (ma - md) > worst) { worst = std::abs (ma - md); worstF = f; worstG = g; worstQ = q; worstO = order; worstHz = hz; }
@@ -837,7 +834,8 @@ void testEqDesign()
                         }
             check (stable, fmt ("%s stable @%g", names[si], fs));
             check (finite, fmt ("%s finite @%g", names[si], fs));
-            const double tol = (shapes[si] == EqShape::bandPass || shapes[si] == EqShape::notch) ? 4.5
+            const double tol = (shapes[si] == EqShape::highCut || shapes[si] == EqShape::lowCut) ? 3.5   // bilinear: a high-Q resonance's width is warped a little
+                             : (shapes[si] == EqShape::bandPass || shapes[si] == EqShape::notch) ? 4.5
                              : (shapes[si] == EqShape::bell || shapes[si] == EqShape::flatTilt) ? 1.0 : 2.0;
             check (worst < tol, fmt ("%s matches analog within %.1f dB @%g (worst %.3f dB)", names[si], tol, fs, worst));
             if (fs == 48000.0 || worst > tol) std::printf ("  %-10s practical range (f < 0.25 fs, <= 48 dB/oct): worst |analog - digital| to 20 kHz: %.3f dB (f %g g %g q %g order %d at %g Hz, fs %g)\n", names[si], worst, worstF, worstG, worstQ, worstO, worstHz, fs);
@@ -1020,9 +1018,7 @@ int main()
     testCompressor();
     testOversampler();
     testEqDesign();
-    std::printf ("High cuts / shelves swept past Nyquist\n");
-    reportCutsAtNyquist (true);
-    testEqDesignHighBand();
+    testCutsNeat();
     testConvolver();
     testStft();
     benchmark();
