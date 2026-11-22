@@ -43,3 +43,13 @@ pattern is done in practice.
 | Band island (raised tab, recessed arc knob with dynamic-range rim), dynamics / match popovers | `Source/ui/Panels.cpp` |
 | Neutral theme override for a plugin | `Source/PluginProcessor.cpp` (constructor) |
 | Response-vs-analog tests per processing mode, UI paint benchmark | `tests/PluginTests.cpp` |
+
+## ST Sample (`../st-sample`)
+
+| Pattern | Where |
+|---|---|
+| Instrument plugin (`IS_SYNTH`, no input bus, sample-accurate MIDI) | `CMakeLists.txt`, `Source/PluginProcessor.cpp` |
+| Non-parameter content in `apvts.state` (sample paths) reconciled into decoded data on a worker thread, graveyard so the audio thread never frees | `Source/Kit.cpp` |
+| Voice engine: pool, Hermite interpolation, choke groups, click-free stealing, lock-free UI auditions | `Source/dsp/Engine.cpp`, `Source/PluginProcessor.cpp` |
+| Factory presets that carry a child tree (kits) | `Source/FactoryKits.cpp` |
+| File drag and drop onto many targets, native file chooser, folder stepping | `Source/PluginEditor.cpp`, `Source/ui/*` |

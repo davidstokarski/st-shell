@@ -4,8 +4,9 @@
 #     VERSION        1.0.0
 #     SOURCES        a.cpp b.cpp ...
 #     [BUNDLE_SUFFIX something]          # defaults to lowercase target name
-#     [AU_TYPE kAudioUnitType_Effect]
-#     [IS_SYNTH] [NEEDS_MIDI_INPUT]
+#     [AU_TYPE kAudioUnitType_Effect]    # default: Effect, or MusicDevice with IS_SYNTH
+#     [VST3_CATEGORIES Fx ...]           # default: Fx, or Instrument with IS_SYNTH
+#     [IS_SYNTH] [NEEDS_MIDI_INPUT]      # IS_SYNTH = an instrument (MIDI in, no audio input needed)
 #     [BINARY_DATA file1 file2 ...])
 #
 # Creates a VST3 + AU (+ Standalone for development) plugin that links the
@@ -20,7 +21,7 @@ option(ST_COPY_AFTER_BUILD "Copy plugins into ~/Library/Audio/Plug-Ins after bui
 function(st_add_plugin target)
     set(flags IS_SYNTH NEEDS_MIDI_INPUT)
     set(one PRODUCT_NAME PLUGIN_CODE VERSION BUNDLE_SUFFIX AU_TYPE)
-    set(multi SOURCES BINARY_DATA)
+    set(multi SOURCES BINARY_DATA VST3_CATEGORIES)
     cmake_parse_arguments(ST "${flags}" "${one}" "${multi}" ${ARGN})
 
     if(NOT ST_BUNDLE_SUFFIX)
@@ -41,6 +42,20 @@ function(st_add_plugin target)
         set(midiIn TRUE)
     endif()
 
+    # Instruments register as MusicDevice (AU "aumu") / VST3 "Instrument" unless told otherwise.
+    set(auType kAudioUnitType_Effect)
+    set(vst3Categories Fx)
+    if(ST_IS_SYNTH)
+        set(auType kAudioUnitType_MusicDevice)
+        set(vst3Categories Instrument)
+    endif()
+    if(ST_AU_TYPE)
+        set(auType ${ST_AU_TYPE})
+    endif()
+    if(ST_VST3_CATEGORIES)
+        set(vst3Categories ${ST_VST3_CATEGORIES})
+    endif()
+
     juce_add_plugin(${target}
         VERSION                  "${ST_VERSION}"
         COMPANY_NAME             "${ST_COMPANY_NAME}"
@@ -55,8 +70,8 @@ function(st_add_plugin target)
         IS_MIDI_EFFECT           FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS TRUE
         COPY_PLUGIN_AFTER_BUILD  ${ST_COPY_AFTER_BUILD}
-        VST3_CATEGORIES          Fx
-        AU_MAIN_TYPE             kAudioUnitType_Effect
+        VST3_CATEGORIES          ${vst3Categories}
+        AU_MAIN_TYPE             ${auType}
         HARDENED_RUNTIME_ENABLED TRUE
         MICROPHONE_PERMISSION_ENABLED TRUE)
 

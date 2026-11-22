@@ -3,7 +3,7 @@
 Shared foundation for the ST family of audio plugins (JUCE 9, C++20, VST3 + AU on macOS): DSP building blocks,
 modulation, presets/state, and the design language that makes every ST plugin look and feel the same.
 
-Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). Also built on it: [ST EQ](https://github.com/davidstokarski/st-eq), [ST DC](https://github.com/davidstokarski/st-dc) (drum compressor). **Agents: start with [CLAUDE.md](CLAUDE.md).**
+Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). Also built on it: [ST EQ](https://github.com/davidstokarski/st-eq), [ST DC](https://github.com/davidstokarski/st-dc) (drum compressor), [ST Split](https://github.com/davidstokarski/st-split), [ST Sample](https://github.com/davidstokarski/st-sample) (drum sampler, the first instrument). **Agents: start with [CLAUDE.md](CLAUDE.md).**
 
 ## Docs
 
