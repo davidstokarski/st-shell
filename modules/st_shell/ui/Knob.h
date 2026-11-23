@@ -50,11 +50,12 @@ class Knob : public ParameterControl, public juce::DragAndDropTarget, private ju
 {
 public:
     enum class Size { large, medium, small, mini };
-    /** classic = matte grey disc with white crescent; ringed = adds the coloured rim (hero controls). */
     /** classic = matte grey disc with white crescent; ringed = adds the coloured rim (hero controls);
         arc = dark disc with a thin value arc in the knob colour (Pro-style band controls). With
-        setRecessed (true) an arc knob sits in a dark well; the gap between well and disc is the rim zone. */
-    enum class Look { classic, ringed, arc };
+        setRecessed (true) an arc knob sits in a dark well; the gap between well and disc is the rim zone.
+        flat = like arc (same geometry, well and rim), drawn as a flat dark disc with a thin track ring that is open
+        at the bottom (the travel), for controls on translucent glass (floating band controls). */
+    enum class Look { classic, ringed, arc, flat };
 
     Knob (juce::RangedAudioParameter&, juce::UndoManager* = nullptr, const juce::String& label = {});
 
@@ -160,6 +161,7 @@ private:
 
     void timerCallback() override;
     juce::String getValueText() const;
+    void paintFlat (juce::Graphics&, const Geometry&, float valueAngle, bool rimActive);
 };
 
 } // namespace st

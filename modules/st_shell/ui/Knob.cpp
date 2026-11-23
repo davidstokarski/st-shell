@@ -225,12 +225,103 @@ Knob::Geometry Knob::geometry() const
     gm.outerR = gm.R - gm.modW - 1.5f;
     gm.rimW = look == Look::ringed ? gm.outerR * 0.17f : 0.0f;
     gm.discR = gm.outerR - gm.rimW - (look == Look::ringed ? 1.0f : 0.0f);
-    if (look == Look::arc)
+    if (look == Look::arc || look == Look::flat)
     {
         gm.discR = recessed ? gm.outerR * 0.74f : gm.outerR * 0.96f;
         gm.rimW = gm.outerR - gm.discR;
     }
     return gm;
+}
+
+void Knob::paintFlat (juce::Graphics& g, const Geometry& gm, float valueA, bool rimActive)
+{
+    const auto& t = Theme::get();
+    const bool enabled = isEnabled();
+    const auto centre = gm.centre;
+    const float discR = gm.discR, outerR = gm.outerR;
+    constexpr float startA = -2.45f, endA = 2.45f;
+
+    // well (recessed): darker than the glass around it, with a faint edge
+    if (recessed)
+    {
+        const auto well = juce::Rectangle<float> (outerR * 2.0f, outerR * 2.0f).withCentre (centre);
+        g.setColour (juce::Colours::black.withAlpha (0.2f));
+        g.fillEllipse (well);
+        g.setColour (juce::Colours::white.withAlpha (0.07f));
+        g.drawEllipse (well.reduced (0.5f), 1.0f);
+    }
+
+    // disc: flat and dark, only a hint lighter at the top; lifts a little on hover
+    const auto disc = juce::Rectangle<float> (discR * 2.0f, discR * 2.0f).withCentre (centre);
+    const float lift = (hovering || dragging) && hoverZone == Zone::value && enabled ? (dragging ? 0.09f : 0.06f) : 0.0f;
+    const auto base = t.bg2.interpolatedWith (t.bg3, 0.4f).brighter (lift);
+    g.setGradientFill (juce::ColourGradient (base.brighter (0.06f), centre.x, disc.getY(), base.darker (0.04f), centre.x, disc.getBottom(), false));
+    g.fillEllipse (disc);
+
+    // track: a thin light ring along the travel, open at the bottom
+    {
+        const float tr = discR - 0.6f;
+        juce::Path track;
+        track.addCentredArc (centre.x, centre.y, tr, tr, 0.0f, startA, endA, true);
+        g.setColour (juce::Colours::white.withAlpha (enabled ? 0.3f : 0.13f));
+        g.strokePath (track, juce::PathStrokeType (1.15f));
+    }
+
+    // value arc just inside the track (bipolar: from twelve o'clock); at the centre a short dash
+    const auto arcCol = enabled ? colour : t.textFaint;
+    const float ar = discR * 0.845f;
+    const float aw = juce::jmax (1.6f, discR * 0.075f);
+    const float from = bipolar ? 0.0f : startA;
+    const float minSpan = (aw * 1.4f) / juce::jmax (1.0f, ar);
+    const float a0 = std::abs (valueA - from) > minSpan ? juce::jmin (from, valueA) : valueA - minSpan;
+    const float a1 = std::abs (valueA - from) > minSpan ? juce::jmax (from, valueA) : valueA + minSpan;
+    juce::Path arc;
+    arc.addCentredArc (centre.x, centre.y, ar, ar, 0.0f, a0, a1, true);
+    g.setColour (arcCol);
+    g.strokePath (arc, juce::PathStrokeType (aw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // range rim (recessed): a dim red span across the gap from the value to value + offset, a bright red block at
+    // its end, live activity in the warning colour
+    if (recessed && rimParam != nullptr && rimStyle == RimStyle::range)
+    {
+        const float plain = param.convertFrom0to1 (normValue);
+        auto angleFor = [&] (float off)
+        {
+            const auto& r = param.getNormalisableRange();
+            return startA + (endA - startA) * param.convertTo0to1 (juce::jlimit (r.start, r.end, plain + off));
+        };
+        const float rr = (discR + outerR) * 0.5f;
+        const float rw = juce::jmax (3.0f, outerR - discR - 2.0f);
+        const float aEnd = angleFor (rimParam->convertFrom0to1 (rimNorm));
+        if (std::abs (aEnd - valueA) > 0.005f)
+        {
+            juce::Path span;
+            span.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aEnd), juce::jmax (valueA, aEnd), true);
+            g.setColour (t.accent.withAlpha (rimActive ? 0.36f : 0.24f));
+            g.strokePath (span, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+            const float blockLen = juce::jmin (0.2f, std::abs (aEnd - valueA));
+            const float b0 = aEnd > valueA ? aEnd - blockLen : aEnd, b1 = aEnd > valueA ? aEnd : aEnd + blockLen;
+            juce::Path block;
+            block.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, b0, b1, true);
+            g.setColour (t.accent.brighter (rimActive ? 0.3f : 0.1f));
+            g.strokePath (block, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+        }
+        else if (rimActive)
+        {
+            juce::Path track;
+            track.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, startA, endA, true);
+            g.setColour (t.accent.withAlpha (0.16f));
+            g.strokePath (track, juce::PathStrokeType (rw, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+        }
+        if (rimActivity && std::abs (rimActivityValue) > 0.02f)
+        {
+            const float aAct = angleFor (rimActivityValue);
+            juce::Path act;
+            act.addCentredArc (centre.x, centre.y, rr, rr, 0.0f, juce::jmin (valueA, aAct), juce::jmax (valueA, aAct), true);
+            g.setColour (t.warning);
+            g.strokePath (act, juce::PathStrokeType (rw * 0.7f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+        }
+    }
 }
 
 Knob::Zone Knob::zoneAt (juce::Point<float> p) const
@@ -239,7 +330,7 @@ Knob::Zone Knob::zoneAt (juce::Point<float> p) const
     const float d = p.getDistanceFrom (gm.centre);
     if (modSource && modState.active && onModulationDepthDrag && d >= gm.outerR - 0.5f && d <= gm.R + 4.0f)
         return Zone::modDepth;
-    if ((look == Look::ringed || (look == Look::arc && recessed)) && rimParam != nullptr && d >= gm.discR - 1.0f && d < gm.outerR + (modState.active ? -0.5f : 4.0f))
+    if ((look == Look::ringed || ((look == Look::arc || look == Look::flat) && recessed)) && rimParam != nullptr && d >= gm.discR - 1.0f && d < gm.outerR + (modState.active ? -0.5f : 4.0f))
         return Zone::rim;
     return Zone::value;
 }
@@ -411,7 +502,9 @@ void Knob::paint (juce::Graphics& g)
         }
     }
 
-    if (look == Look::arc)
+    if (look == Look::flat)
+        paintFlat (g, gm, valueA, rimActive);
+    else if (look == Look::arc)
     {
         // Dark well (recessed hero knob)
         if (recessed)
@@ -501,7 +594,7 @@ void Knob::paint (juce::Graphics& g)
         paint::knobDisc (g, centre, discR, valueA, hovering || dragging);
 
     // Hover: a faint light ring around the disc (FabFilter-style affordance)
-    if ((hovering || dragging) && hoverZone == Zone::value && enabled)
+    if ((hovering || dragging) && hoverZone == Zone::value && enabled && look != Look::flat)
     {
         g.setColour (juce::Colours::white.withAlpha (dragging ? 0.10f : 0.06f));
         g.drawEllipse (juce::Rectangle<float> ((discR + 2.5f) * 2.0f, (discR + 2.5f) * 2.0f).withCentre (centre), 1.2f);
