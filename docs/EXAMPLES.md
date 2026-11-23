@@ -27,7 +27,7 @@ pattern is done in practice.
 | Pattern | Where |
 |---|---|
 | Several compressor engines in one class; feedback designs solved to match the static curve | `Source/dsp/Compressor.cpp` |
-| Lock-free, non-consuming level / GR history for scrolling displays | `Source/dsp/Engine.h` (`LevelHistory`), `Source/ui/Display.cpp` (`HistoryReader`) |
+| Scrolling level / GR display on the shell's `st::LevelHistory` (written per ~4 ms frame by the engine, read by `st::HistoryReader` / `st::SmoothScroll` / `st::HistoryPaths`, meters via `st::LiveLevels`) | `Source/dsp/Engine.cpp`, `Source/ui/Display.cpp`, `Source/ui/Strip.cpp` |
 | Pro-style level display with a threshold handle, spectrum with a GR band, knee display | `Source/ui/Display.cpp` |
 | Plugin-specific multiview (only tracks with this plug-in, custom order and title) | `Source/PluginEditor.cpp` (`toggleMultiView`) |
 | Custom backdrop (procedural wood) replacing `EditorBase::paintBackground`, cached per pixel scale | `Source/PluginEditor.cpp`, `Source/ui/Style.cpp` |
