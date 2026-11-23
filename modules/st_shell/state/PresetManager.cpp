@@ -7,12 +7,14 @@ static const juce::Identifier presetIndexId ("stPresetIndex");
 PresetManager::PresetManager (juce::AudioProcessorValueTreeState& s, const juce::String& company, const juce::String& productName)
     : apvts (s), product (productName)
 {
-    userDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-               #if JUCE_MAC
-                .getChildFile ("Audio/Presets")
-               #endif
-                .getChildFile (company)
-                .getChildFile (productName);
+    const auto root = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                       #if JUCE_MAC
+                        .getChildFile ("Audio/Presets")
+                       #endif
+                        ;
+    userDir = root.getChildFile (company).getChildFile (productName);
+    // presets saved before the rename to Stokarski Studios (also the host's own presets, e.g. Logic's .aupreset)
+    if (company == kCompanyName) adoptLegacyFolder (userDir, root.getChildFile (kLegacyCompanyName).getChildFile (productName));
 
     defaultState = apvts.copyState();
     defaultState.setProperty (presetNameId, "Init", nullptr);

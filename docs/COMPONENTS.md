@@ -90,6 +90,13 @@ track without that kind isn't shown (it stays pinned for the others) and "Unpin 
 Pins live in memory, not in the session. Open it from `HeaderBar::setMultiViewCallback` (ST Sat)
 or your own button (ST EQ's bottom bar). Tested across binaries in ST EQ's tests (they load the ST Sat AU).
 
+## Brand — `core/Brand.h`
+
+`st::kCompanyName` ("Stokarski Studios", = cmake `ST_COMPANY_NAME`) names the company in hosts and the folders the
+plug-ins keep files in (`~/Library/Audio/Presets/<company>/`, `~/Library/Application Support/<company>/`). Use it,
+never a literal. `adoptLegacyFolder (dir, legacy)` moves a folder from the old "ST Audio" location
+(`kLegacyCompanyName`) on first use; PresetManager and the shared settings already do (ST Split for its plug-in cache).
+
 ## Adding a component
 
 Put it in the right layer, register it in the aggregator, use theme tokens, add it to this table, and use it from a

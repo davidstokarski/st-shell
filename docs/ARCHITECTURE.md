@@ -50,7 +50,7 @@ compiled, so **register new files in the aggregator** or they won't build. On Ap
 
 - Everything that belongs in a preset is in `apvts.state` (parameters + child trees such as `MODULATION`).
 - Editor-only, session-scoped things (scale, selected band, open panels, analyser mode) go in `uiState`.
-- Presets: `.stpreset` XML in `~/Library/Audio/Presets/ST Audio/<Product>/`. Factory presets are registered in code
+- Presets: `.stpreset` XML in `~/Library/Audio/Presets/Stokarski Studios/<Product>/` (moved from the old "ST Audio" folder on first load). Factory presets are registered in code
   with `presets.addFactoryPreset (name, category, { { "paramId", plainValue }, ... })`; unspecified params use defaults.
 - Loading a preset/A-B/session calls `apvts.replaceState`; listen to state changes rather than caching values.
 
@@ -76,7 +76,7 @@ compiled, so **register new files in the aggregator** or they won't build. On Ap
 ## CMake
 
 `st_add_plugin (Target PRODUCT_NAME "ST X" PLUGIN_CODE Abcd VERSION ... SOURCES ...)` creates VST3/AU/Standalone,
-links the module + fonts, sets company "ST Audio", manufacturer code `StAu`, bundle id `com.staudio.<target>`.
+links the module + fonts, sets company "Stokarski Studios" (`st::kCompanyName`; formerly "ST Audio"), manufacturer code `StAu`, bundle id `com.staudio.<target>` (code and bundle ids kept from the "ST Audio" days so sessions still load).
 Instruments pass `IS_SYNTH` (AU type `aumu` / VST3 `Instrument`, MIDI in); `VST3_CATEGORIES` and `AU_TYPE` override
 the defaults (ST Sample: `IS_SYNTH VST3_CATEGORIES Instrument Drum Sampler`). An instrument has no input bus, so it
 overrides `isBusesLayoutSupported` and `acceptsMidi` (see ST Sample's processor).

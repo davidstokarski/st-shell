@@ -8,5 +8,6 @@
  #define ST_PRODUCT_VERSION "0.0.0"
 #endif
 
+#include "Brand.h"
 #include "Params.h"
 #include "Metering.h"

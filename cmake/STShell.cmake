@@ -12,7 +12,11 @@
 # Creates a VST3 + AU (+ Standalone for development) plugin that links the
 # ST Shell module, the shared fonts and JUCE's recommended flags.
 
-set(ST_COMPANY_NAME      "ST Audio"   CACHE STRING "Company name shown in hosts")
+set(ST_COMPANY_NAME      "Stokarski Studios" CACHE STRING "Company name shown in hosts (= st::kCompanyName)")
+if(ST_COMPANY_NAME STREQUAL "ST Audio")   # build folders configured before the rename
+    set(ST_COMPANY_NAME "Stokarski Studios" CACHE STRING "Company name shown in hosts (= st::kCompanyName)" FORCE)
+endif()
+# Plug-in identity: unchanged by the rename (from "ST Audio") so saved sessions still find the plug-ins.
 set(ST_MANUFACTURER_CODE "StAu"       CACHE STRING "4-char manufacturer code")
 set(ST_BUNDLE_PREFIX     "com.staudio" CACHE STRING "Bundle id prefix")
 option(ST_BUILD_STANDALONE "Also build a Standalone app (handy for development)" ON)

@@ -4,7 +4,7 @@ namespace st
 {
 
 /** Preferences shared by every ST plug-in for this user (not per instance or preset), stored in
-    ~/Library/Application Support/ST Audio/settings.settings (or the platform equivalent).
+    ~/Library/Application Support/Stokarski Studios/settings.settings (or the platform equivalent).
     Message thread. Example: tooltips on / off. */
 namespace userSettings
 {

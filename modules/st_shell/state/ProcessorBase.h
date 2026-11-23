@@ -13,7 +13,7 @@ class ProcessorBase : public juce::AudioProcessor
 {
 public:
     ProcessorBase (const BusesProperties&, juce::AudioProcessorValueTreeState::ParameterLayout,
-                   const juce::String& companyName = "ST Audio");
+                   const juce::String& companyName = kCompanyName);
     ~ProcessorBase() override;
 
     //==============================================================================

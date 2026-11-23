@@ -2,7 +2,7 @@
  BEGIN_JUCE_MODULE_DECLARATION
 
   ID:                 st_shell
-  vendor:             ST Audio
+  vendor:             Stokarski Studios
   version:            0.1.0
   name:               ST Shell
   description:        Shared DSP, state, modulation and UI foundation for ST plugins.
