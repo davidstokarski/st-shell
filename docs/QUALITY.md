@@ -13,6 +13,10 @@
 
 ## Visual
 - Render snapshots: `StSatPluginTests --snapshot <dir>` writes PNGs at 2x for several presets, scales and popovers.
+- Website videos: `modules/st_shell/testing/st_video.h` (test tools only, never in a plug-in build) renders use-case
+  clips of a plug-in's real editor: a synthesized mix (or MIDI) plays through the processor in real time while a
+  scripted pointer drives the components' own mouse handlers, frames piped to ffmpeg. Each plug-in keeps its scenes
+  in its test tool (`--video` / `--usecases`, see its CLAUDE.md).
   Add a job for every state you touched (see `tests/PluginTests.cpp`: `Snapshotter::Job` with `setup` / `afterOpen`).
 - Open the PNGs and check against DESIGN.md §8: overlaps, clipped shadows / dark corners, hard line ends, truncated
   text, misaligned captions, stale state (e.g. a control visible that shouldn't be).
