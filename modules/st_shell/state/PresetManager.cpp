@@ -4,6 +4,18 @@ namespace st
 static const juce::Identifier presetNameId ("stPresetName");
 static const juce::Identifier presetIndexId ("stPresetIndex");
 
+/** Writes the current values of the kept parameters into a state about to replace the APVTS state. */
+static void keepCurrentValues (juce::ValueTree& target, juce::AudioProcessorValueTreeState& apvts, const juce::StringArray& ids)
+{
+    for (const auto& id : ids)
+    {
+        auto* p = apvts.getParameter (id);
+        auto child = target.getChildWithProperty ("id", id);
+        if (p != nullptr && child.isValid())
+            child.setProperty ("value", p->convertFrom0to1 (p->getValue()), nullptr);
+    }
+}
+
 PresetManager::PresetManager (juce::AudioProcessorValueTreeState& s, const juce::String& company, const juce::String& productName)
     : apvts (s), product (productName)
 {
@@ -133,6 +145,7 @@ void PresetManager::applyState (const juce::ValueTree& state, const juce::String
         }
     }
 
+    keepCurrentValues (merged, apvts, keepParameters);
     merged.setProperty (presetNameId, name, nullptr);
     merged.setProperty (presetIndexId, index, nullptr);
     apvts.replaceState (merged);
@@ -251,7 +264,11 @@ bool PresetManager::isModified() const
 
     for (int i = 0; i < params.size(); ++i)
         if (std::abs (params[i]->getValue() - snapshot[(size_t) i]) > 1.0e-5f)
+        {
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (params[i]); wid != nullptr && keepParameters.contains (wid->paramID))
+                continue;
             return true;
+        }
 
     return false;
 }
@@ -282,7 +299,11 @@ void ABCompare::select (int slot)
     slots[(size_t) active] = apvts.copyState();
 
     if (slots[(size_t) slot].isValid())
-        apvts.replaceState (slots[(size_t) slot].createCopy());
+    {
+        auto next = slots[(size_t) slot].createCopy();
+        keepCurrentValues (next, apvts, keepParameters);
+        apvts.replaceState (next);
+    }
     else
         slots[(size_t) slot] = apvts.copyState();
 
