@@ -35,6 +35,13 @@ Everything here is in namespace `st` unless noted. Paths are relative to `module
 
 `MeterSource` (audio → UI peak/RMS), `LevelMeter`, `GainChangeMeter`, `AnalyzerSource` + `SpectrumAnalyzer`
 (Blackman-Harris FFT, fractional-octave smoothing, `hopSize` for smooth motion, `createPath`).
+`LevelHistory` (`core/LevelHistory.h`): lock-free level / gain-change history for scrolling dynamics displays (one
+frame every ~4 ms: in / out / detector peaks and the signed gain change, negative = reduction, positive = upward),
+written by the audio thread, read without consuming by any number of views. `ui/LevelHistoryView.h`: `HistoryReader`
+(local ring by absolute frame index, optional peak envelope for calm level lines), `SmoothScroll` (glides at the frame
+rate although audio arrives in host-block bursts), `HistoryPaths` (in / out fills, out line, gain trace + fill,
+bucketed on absolute indices so nothing shimmers), `LiveLevels` (meter / readout values with display ballistics).
+Used by ST Comp's level display, knee, meters and multiview module.
 `AnalyzerSource` also keeps a non-consuming history tap (`readLatest` / `getHistoryPosition`), so any number of
 readers — e.g. another instance's editor — can analyse it; `SpectrumAnalyzer::Options::nonConsuming` uses it.
 

@@ -4,6 +4,7 @@
 #include "Knob.h"
 #include "Controls.h"
 #include "Meters.h"
+#include "LevelHistoryView.h"
 #include "EditorBase.h"
 #include "ModulationPanel.h"
 #include "ModulationBinder.h"

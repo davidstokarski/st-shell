@@ -11,3 +11,4 @@
 #include "Brand.h"
 #include "Params.h"
 #include "Metering.h"
+#include "LevelHistory.h"

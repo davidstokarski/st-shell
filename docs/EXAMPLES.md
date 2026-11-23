@@ -53,3 +53,15 @@ pattern is done in practice.
 | Voice engine: pool, Hermite interpolation, choke groups, click-free stealing, lock-free UI auditions | `Source/dsp/Engine.cpp`, `Source/PluginProcessor.cpp` |
 | Factory presets that carry a child tree (kits) | `Source/FactoryKits.cpp` |
 | File drag and drop onto many targets, native file chooser, folder stepping | `Source/PluginEditor.cpp`, `Source/ui/*` |
+
+## ST Comp (`../st-comp`)
+
+| Pattern | Where |
+|---|---|
+| Many compressor designs as data: a style table of one or two stages (detector, feed-forward / feedback, curve, release type) run by one engine | `Source/Styles.cpp`, `Source/dsp/Compressor.cpp` |
+| Serial gain stages (opto leveller into a FET) with an exact static curve for the knee display | `Source/dsp/Compressor.cpp` (`staticGainDb`, `StageCurve::steadyState`) |
+| Upward compression with a silence floor; signed gain change through `st::LevelHistory` | `Source/dsp/Compressor.cpp`, `Source/ui/Display.cpp` |
+| Lookahead without allocation (delays sized for the maximum), host latency updated asynchronously | `Source/dsp/Engine.cpp`, `Source/PluginProcessor.cpp` (`applyPendingChanges`) |
+| Side-chain filter drawn and dragged on the detector's own spectrum, in a popover; side-chain listen | `Source/ui/Display.cpp` (`SidechainDisplay`), `Source/ui/Panels.cpp` (`SidechainPopover`) |
+| Mid/side and single-channel processing modes | `Source/dsp/Engine.cpp` |
+| Draggable knee display (sideways = threshold, up / down = ratio) | `Source/ui/Display.cpp` (`KneeView`) |
