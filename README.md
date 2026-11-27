@@ -15,6 +15,7 @@ Reference plugin: [ST Sat](https://github.com/davidstokarski/st-sat). Also built
 - [docs/QUALITY.md](docs/QUALITY.md) — verification bar (tests, snapshots, auval, UI performance)
 - [docs/EXAMPLES.md](docs/EXAMPLES.md) — where each pattern lives in ST Sat
 - [docs/RELEASING.md](docs/RELEASING.md) — universal builds and GitHub release downloads
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute to the shell and the plugins
 
 ## What's inside (`modules/st_shell`, namespace `st`)
 
