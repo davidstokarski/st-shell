@@ -32,3 +32,13 @@ Bump `project(<Name> VERSION x.y.z)` in the plugin's `CMakeLists.txt` before rel
   Apple Developer ID.
 - Run the plugin's tests and `auval` before releasing.
 - `dist/` and `build-release/` are git-ignored.
+
+## The all-plug-ins bundle
+
+`scripts/release-bundle.sh` (in st-shell) downloads every plug-in's latest release zip, puts all the bundles in one
+`ST Plugins <date>/` folder with an INSTALL.txt, and publishes it as an st-shell release `bundle-<date>` (marked latest),
+assets `ST-Plugins-<date>-macOS.zip` and `ST-Plugins-macOS.zip`. Run it after releasing any plug-in. The website's
+"Download all" button links to the stable
+`https://github.com/davidstokarski/st-shell/releases/latest/download/ST-Plugins-macOS.zip`, and each plug-in's button to
+`https://github.com/davidstokarski/<repo>/releases/latest/download/<Slug>-macOS.zip` (through its `/api/download/<slug>`
+route, which counts the download), so a release shows up on the site without touching it.
