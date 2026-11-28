@@ -221,7 +221,7 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
     pendingSeconds += elapsedSeconds;
     idleSeconds = got > 0 ? 0.0 : idleSeconds + elapsedSeconds;
 
-    if (newSamples < (opts.hopSize > 0 ? opts.hopSize : fftSize / 8))
+    if (newSamples < (opts.hopSize > 0 ? opts.hopSize : 64))
     {
         // Audio is still arriving (just not a whole hop yet, e.g. big host buffers): hold, don't flicker.
         if (idleSeconds < 0.12) return false;
@@ -240,7 +240,11 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
     }
 
     newSamples = 0;
-    const float fall = (float) (opts.releaseDbPerSec * juce::jmin (0.25, pendingSeconds));
+    const double since = juce::jmin (0.25, pendingSeconds);
+    const float fall = (float) (opts.releaseDbPerSec * since);
+    // rise smoothing per elapsed time (opts.attack is the share per 1/60 s), so the analyser feels the same at
+    // 60 Hz, 120 Hz or with an FFT only every few frames
+    const float rise = 1.0f - std::pow (1.0f - juce::jlimit (0.0f, 0.999f, opts.attack), (float) juce::jmax (0.25, since * 60.0));
     pendingSeconds = 0.0;
 
     for (int i = 0; i < fftSize; ++i)
@@ -303,7 +307,7 @@ bool SpectrumAnalyzer::update (double elapsedSeconds)
     {
         const float db = targets[(size_t) i];
         auto& l = levels[(size_t) i];
-        if (db > l) l += (db - l) * opts.attack;
+        if (db > l) l += (db - l) * rise;
         else        l = juce::jmax (db, l - fall);
     }
 

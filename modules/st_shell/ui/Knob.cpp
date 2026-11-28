@@ -35,12 +35,23 @@ void ParameterControl::endEdit()
     {
         attachment.endGesture();
         gestureActive = false;
+        nameUndoStep();
     }
 }
 
 void ParameterControl::setNormalisedAsGesture (float n)
 {
     attachment.setValueAsCompleteGesture (param.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, n)));
+    nameUndoStep();
+}
+
+void ParameterControl::nameUndoStep()
+{
+    // the undo history list shows this: "Threshold -6.00 dB"
+    if (undo == nullptr) return;
+    auto value = param.getCurrentValueAsText();
+    if (const auto label = param.getLabel(); label.isNotEmpty() && ! value.endsWith (label)) value << " " << label;
+    undo->setCurrentTransactionName (param.getName (48) + "  " + value);
 }
 
 void ParameterControl::resetToDefault()

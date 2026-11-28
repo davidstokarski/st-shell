@@ -8,7 +8,7 @@ before it:
 | Layer | Contents |
 |---|---|
 | `core/` | `st::params` (ranges, formatters, builders, `Ref`), `MeterSource`, `AnalyzerSource`, `SpectrumAnalyzer` |
-| `dsp/` | `st::dsp`: `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `Crossover` (LR 12/24/48, ≤8 bands), `eq::` analog-matched EQ design + `EqCascade`, `PartitionedConvolver`, `UpDownCompressor`, `Oversampler` (1–16x), `DelayLine`, `EnvelopeFollower`, `Reverb` (8 types), `LinearSmoother`, utils |
+| `dsp/` | `st::dsp`: `Biquad`, `Svf`, `TiltFilter`, `OnePole`, `DcBlocker`, `Crossover` (LR 12/24/48, ≤8 bands), `eq::` analog-matched EQ design + `EqCascade`, `PartitionedConvolver`, `UpDownCompressor`, `Oversampler` (1–16x, optionally to 64x), `DelayLine`, `EnvelopeFollower`, `Reverb` (8 types), `LinearSmoother`, utils |
 | `mod/` | `st::mod::ModMatrix` (LFOs, envelope followers, macros, routings in `apvts.state`) |
 | `state/` | `ProcessorBase`, `PresetManager`, `ABCompare` |
 | `theme/` | `Theme` tokens, `fonts`, `icons`, `paint::` helpers, `LookAndFeel` |
@@ -62,6 +62,8 @@ compiled, so **register new files in the aggregator** or they won't build. On Ap
   (layout is deferred until the subclass exists).
 - `header` is provided; call `header.toFront (false)` after adding a full-window display so it stays on top.
 - Animate with one `st::FrameClock` (usually owned by the main display) and pass `onFrame` to the editor for panel motion.
+  It fires on every display refresh (120 Hz on ProMotion screens) unless the user caps the frame rate, so advance
+  animation, ballistics and analysers by its `dt`, never by a fixed step per frame.
 - Cache static components: `setBufferedToImage (true)` on header, footer, control bars.
 
 ## Modulation

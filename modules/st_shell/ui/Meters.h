@@ -4,11 +4,10 @@ namespace st
 {
 
 /** Vertical stereo peak/RMS meter with peak hold and clip readout. */
-class LevelMeter : public juce::Component, private juce::Timer
+class LevelMeter : public juce::Component
 {
 public:
     explicit LevelMeter (MeterSource&, const juce::String& caption = {});
-    ~LevelMeter() override { stopTimer(); }
 
     void setRange (float minDb, float maxDb) { lo = minDb; hi = maxDb; repaint(); }
     void setShowScale (bool b) { showScale = b; repaint(); }
@@ -28,18 +27,18 @@ private:
     std::array<float, 2> peakDb { -100.0f, -100.0f }, rmsDb { -100.0f, -100.0f }, holdDb { -100.0f, -100.0f };
     std::array<double, 2> holdTime { 0.0, 0.0 };
     float maxPeakDb = -100.0f;
-    double lastTime = 0.0;
+    double now = 0.0;
+    FrameClock clock { *this, [this] (double dt) { frame (dt); } };   // in step with the display refresh
 
-    void timerCallback() override;
+    void frame (double dt);
 };
 
 //==============================================================================
 /** Horizontal bipolar gain-change meter (upward = positive, downward = negative). */
-class GainChangeMeter : public juce::Component, private juce::Timer
+class GainChangeMeter : public juce::Component
 {
 public:
     explicit GainChangeMeter (std::function<float()> getGainDb, float rangeDb = 24.0f);
-    ~GainChangeMeter() override { stopTimer(); }
     void paint (juce::Graphics&) override;
     void setColour (juce::Colour c) { colour = c; }
 
@@ -47,7 +46,8 @@ private:
     std::function<float()> getter;
     float range, value = 0.0f;
     juce::Colour colour;
-    void timerCallback() override;
+    FrameClock clock { *this, [this] (double) { frame(); } };
+    void frame();
 };
 
 } // namespace st

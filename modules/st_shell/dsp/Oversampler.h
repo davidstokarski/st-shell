@@ -7,9 +7,9 @@
 namespace st::dsp
 {
 
-/** Runtime-switchable oversampler (1x/2x/4x/8x/16x) over juce::dsp::Oversampling.
+/** Runtime-switchable oversampler (1x/2x/4x/8x/16x, optionally 32x/64x) over juce::dsp::Oversampling.
 
-    All five variants are built in prepare() (half-band FIR equiripple, max quality,
+    All variants up to the prepared maximum (16x unless prepare() asks for more) are built in prepare() (half-band FIR equiripple, max quality,
     integer latency), so switching factor on the audio thread never allocates: the
     newly selected variant is reset and used from the next processUp().
 
@@ -23,12 +23,16 @@ namespace st::dsp
 class Oversampler
 {
 public:
-    static constexpr int kNumFactors = 5; // index i -> 2^i times
+    static constexpr int kNumFactors = 5;      // index i -> 2^i times: the default range, 1x..16x
+    static constexpr int kMaxNumFactors = 7;   // with prepare (..., maxFactorIndex = 6): up to 64x
 
-    void prepare (double sampleRate, int maxBlockSize, int numChannels);
+    /** maxFactorIndex: the highest factor to build (4 = 16x, the default; 6 = 64x). Higher factors cost memory
+        (buffers of maxBlockSize * factor) and CPU in whatever runs at the oversampled rate. */
+    void prepare (double sampleRate, int maxBlockSize, int numChannels, int maxFactorIndex = kNumFactors - 1);
     void reset() noexcept;
 
-    void setFactorIndex (int index) noexcept;                        // 0..4 (1x..16x)
+    void setFactorIndex (int index) noexcept;                        // 0..max (1x..16x, or ..64x)
+    int getMaxFactorIndex() const noexcept { return numFactors - 1; }
     int getFactorIndex() const noexcept { return requestedIndex.load (std::memory_order_relaxed); }
     int getFactor() const noexcept      { return 1 << getFactorIndex(); }
     static int factorForIndex (int index) noexcept { return 1 << index; }
@@ -38,7 +42,7 @@ public:
     int getLatencySamples (int factorIndex) const noexcept;
 
     double getOversampledRate() const noexcept { return baseRate * getFactor(); }
-    int getMaxOversampledBlockSize() const noexcept { return maxBlock * (1 << (kNumFactors - 1)); }
+    int getMaxOversampledBlockSize() const noexcept { return maxBlock * (1 << (numFactors - 1)); }
 
     /** Upsamples (numSamples = input.getNumSamples()). The returned block (numSamples *
         factor long) is owned by the oversampler and valid until processDown(). At 1x it
@@ -50,8 +54,9 @@ public:
     void processDown (juce::dsp::AudioBlock<float>& output) noexcept;
 
 private:
-    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, kNumFactors> stages;
-    std::array<int, kNumFactors> latencies {};
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, kMaxNumFactors> stages;
+    std::array<int, kMaxNumFactors> latencies {};
+    int numFactors = kNumFactors;
     std::atomic<int> requestedIndex { 0 };
     int activeIndex = 0;
     double baseRate = 48000.0;

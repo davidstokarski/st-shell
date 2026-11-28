@@ -23,7 +23,8 @@
 - Check 75% scale too.
 
 ## UI performance
-- Display repaints only when something changed; animation via `FrameClock` (≤60 fps).
+- Display repaints only when something changed; animation via `FrameClock` (display rate, or ≤60 fps when capped),
+  advanced by `dt` so motion has the same speed at 60 and 120 Hz.
 - Static parts cached (`setBufferedToImage`), backdrop cached.
 - Heavy work (blur images, path building for static things) cached and invalidated on change.
 

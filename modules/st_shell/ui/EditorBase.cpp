@@ -103,10 +103,17 @@ HeaderBar::HeaderBar (ProcessorBase& p) : proc (p), product (JucePlugin_Name)
     proc.ab.addChangeListener (this);
     refreshAB();
     startTimerHz (6);
+
+    // rest the pointer on Undo / Redo to see the history
+    undoButton.addMouseListener (this, false);
+    redoButton.addMouseListener (this, false);
 }
 
 HeaderBar::~HeaderBar()
 {
+    history.reset();
+    undoButton.removeMouseListener (this);
+    redoButton.removeMouseListener (this);
     proc.presets.removeChangeListener (this);
     proc.ab.removeChangeListener (this);
 }
@@ -231,8 +238,49 @@ void HeaderBar::paint (juce::Graphics& g)
 
 void HeaderBar::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.eventComponent == &undoButton || e.eventComponent == &redoButton) { ++hoverToken; return; }
     if (presetArea.contains (e.getPosition()))
         showPresetMenu();
+}
+
+void HeaderBar::mouseEnter (const juce::MouseEvent& e)
+{
+    if (e.eventComponent != &undoButton && e.eventComponent != &redoButton) return;
+    const int token = ++hoverToken;
+    juce::Timer::callAfterDelay (650, [safe = juce::Component::SafePointer<HeaderBar> (this), token]
+    {
+        if (safe == nullptr || safe->hoverToken != token || safe->history != nullptr) return;
+        if (safe->undoButton.isMouseOver (true) || safe->redoButton.isMouseOver (true))
+            safe->showUndoHistory();
+    });
+}
+
+void HeaderBar::mouseExit (const juce::MouseEvent& e)
+{
+    if (e.eventComponent == &undoButton || e.eventComponent == &redoButton) ++hoverToken;
+}
+
+void HeaderBar::showUndoHistory()
+{
+    auto* parent = getParentComponent();
+    if (parent == nullptr || history != nullptr) return;
+    if (! proc.undoManager.canUndo() && ! proc.undoManager.canRedo()) return;
+
+    const auto anchor = undoButton.getBounds().getUnion (redoButton.getBounds()).translated (getX(), getY());
+    history = std::make_unique<UndoHistoryList> (proc.undoManager, anchor);
+    history->onClose = [this]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<HeaderBar> (this)]
+        {
+            if (safe != nullptr) safe->history.reset();
+        });
+    };
+    const auto size = history->getIdealSize();
+    const int m = UndoHistoryList::margin;
+    const int x = juce::jlimit (0, juce::jmax (0, parent->getWidth() - size.x), anchor.getX() - m - 4);
+    history->setBounds (x, anchor.getBottom() - m + 4, size.x, size.y);
+    parent->addAndMakeVisible (*history);
+    history->toFront (true);
 }
 
 void HeaderBar::showPresetMenu()
@@ -320,6 +368,8 @@ void HeaderBar::showSettingsMenu()
         userSettings::setBool (userSettings::showTooltips, ! tips);
         if (onTooltipsToggled) onTooltipsToggled (! tips);
     });
+    const bool capped = userSettings::isFrameRateCapped();
+    menu.addItem ("Cap Frame Rate (60 fps)", true, capped, [capped] { userSettings::setFrameRateCapped (! capped); });
 
     if (extendSettingsMenu)
     {
@@ -344,6 +394,7 @@ EditorBase::EditorBase (ProcessorBase& p, int w, int h)
     content.setBounds (0, 0, designW, designH);
 
     setTooltipsEnabled (userSettings::getBool (userSettings::showTooltips, true));
+    userSettings::refreshCache();   // another ST plug-in may have changed the shared settings
 
     header.onScaleChosen = [this] (float s) { setScale (s); };
     header.onTooltipsToggled = [this] (bool on) { setTooltipsEnabled (on); };

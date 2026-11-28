@@ -2,6 +2,7 @@
 #include "Controls.cpp"
 #include "Meters.cpp"
 #include "LevelHistoryView.cpp"
+#include "UndoHistory.cpp"
 #include "EditorBase.cpp"
 #include "ModulationPanel.cpp"
 #include "ModulationBinder.cpp"

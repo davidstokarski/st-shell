@@ -48,8 +48,14 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
     juce::Rectangle<int> getPresetArea() const noexcept { return presetArea; }
+
+    /** Opens the undo history list below the Undo button (normally: rest the pointer on Undo / Redo). */
+    void showUndoHistory();
+    UndoHistoryList* getUndoHistory() const noexcept { return history.get(); }
 
 private:
     ProcessorBase& proc;
@@ -63,6 +69,8 @@ private:
     IconButton multiViewButton { icons::Icon::multiview, "Multiview: every ST plug-in in the session, by track" };
     juce::Rectangle<int> presetArea, brandArea;
     bool modified = false;
+    std::unique_ptr<UndoHistoryList> history;
+    int hoverToken = 0;
 
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

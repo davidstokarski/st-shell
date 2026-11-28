@@ -81,10 +81,12 @@ struct SpectrumAnalyzerOptions
     float minHz = 10.0f, maxHz = 30000.0f;
     float slopeDbPerOct = 4.5f;     // tilt so pink noise looks flat
     float releaseDbPerSec = 42.0f;  // fall speed
-    float attack = 0.65f;           // 0..1 rise smoothing
+    float attack = 0.65f;           // 0..1 rise smoothing per 1/60 s (time based: same speed at any frame rate)
     float floorDb = -120.0f;
     int smoothingPasses = 3;        // ~1/6-octave smoothing at 300 points
-    int hopSize = 0;                // new samples needed per FFT (0 = fftSize / 8). Smaller = smoother motion.
+    int hopSize = 0;                // minimum new samples per FFT. 0 = in sync with the display: a fresh FFT on every
+                                    // update() (every display frame) once >= 64 new samples arrived. Larger values
+                                    // save CPU in compact views (e.g. 1024 for multiview modules).
     bool nonConsuming = false;      // read the source's history tap instead of its FIFO (several analysers per source)
 };
 
@@ -96,7 +98,8 @@ public:
 
     explicit SpectrumAnalyzer (AnalyzerSource&, Options = {});
 
-    /** Pulls new samples, runs FFT, updates smoothed levels. Returns true if levels changed. */
+    /** Pulls new samples, runs FFT, updates smoothed levels. Returns true if levels changed. Call it once per display
+        frame (st::FrameClock) with the frame's dt: the analyser then moves on every refresh of the monitor. */
     bool update (double elapsedSeconds);
 
     const std::vector<float>& getLevelsDb() const noexcept { return levels; }

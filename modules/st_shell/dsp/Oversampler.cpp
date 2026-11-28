@@ -1,13 +1,15 @@
 namespace st::dsp
 {
 
-void Oversampler::prepare (double sampleRate, int maxBlockSize, int numChannels)
+void Oversampler::prepare (double sampleRate, int maxBlockSize, int numChannels, int maxFactorIndex)
 {
     baseRate = sampleRate > 0.0 ? sampleRate : 48000.0;
     maxBlock = std::max (1, maxBlockSize);
     const auto chans = (size_t) std::max (1, numChannels);
+    numFactors = std::clamp (maxFactorIndex, 0, kMaxNumFactors - 1) + 1;
+    for (auto& s : stages) s.reset();
 
-    for (int i = 0; i < kNumFactors; ++i)
+    for (int i = 0; i < numFactors; ++i)
     {
         auto os = std::make_unique<juce::dsp::Oversampling<float>> (
             chans, (size_t) i, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple,
@@ -17,6 +19,7 @@ void Oversampler::prepare (double sampleRate, int maxBlockSize, int numChannels)
         stages[(size_t) i] = std::move (os);
     }
 
+    requestedIndex.store (std::clamp (requestedIndex.load(), 0, numFactors - 1));
     activeIndex = requestedIndex.load();
     reset();
 }
@@ -30,12 +33,12 @@ void Oversampler::reset() noexcept
 
 void Oversampler::setFactorIndex (int index) noexcept
 {
-    requestedIndex.store (std::clamp (index, 0, kNumFactors - 1));
+    requestedIndex.store (std::clamp (index, 0, numFactors - 1));
 }
 
 int Oversampler::getLatencySamples (int factorIndex) const noexcept
 {
-    return latencies[(size_t) std::clamp (factorIndex, 0, kNumFactors - 1)];
+    return latencies[(size_t) std::clamp (factorIndex, 0, numFactors - 1)];
 }
 
 juce::dsp::AudioBlock<float> Oversampler::processUp (const juce::dsp::AudioBlock<const float>& input) noexcept

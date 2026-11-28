@@ -188,6 +188,15 @@ namespace icons
                 p.startNewSubPath (16.0f, 5.0f); p.lineTo (20.0f, 5.0f); p.lineTo (20.0f, 9.0f);
                 break;
 
+            case Icon::lock:
+            case Icon::unlock:
+                p.addRoundedRectangle (6.0f, 11.0f, 12.0f, 9.0f, 2.0f);
+                p.startNewSubPath (8.5f, 11.0f); p.lineTo (8.5f, 8.0f);
+                p.cubicTo (8.5f, 3.5f, 15.5f, 3.5f, 15.5f, 8.0f);
+                p.lineTo (15.5f, icon == Icon::lock ? 11.0f : 9.0f);
+                p.addEllipse (11.2f, 14.3f, 1.6f, 1.6f);
+                break;
+
             case Icon::headphones:
                 p.startNewSubPath (5.0f, 15.0f); p.lineTo (5.0f, 12.0f);
                 p.cubicTo (5.0f, 3.0f, 19.0f, 3.0f, 19.0f, 12.0f); p.lineTo (19.0f, 15.0f);

@@ -32,6 +32,8 @@ protected:
     void showContextMenu (std::function<void (juce::PopupMenu&)> addOwnItems);
 
     virtual void valueChanged() { repaint(); }
+    /** Names the undo step of the edit that just ended after the parameter and its new value (undo history list). */
+    void nameUndoStep();
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParameterControl)

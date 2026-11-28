@@ -3,8 +3,6 @@ namespace st
 
 LevelMeter::LevelMeter (MeterSource& s, const juce::String& c) : source (s), caption (c)
 {
-    startTimerHz (40);
-    lastTime = juce::Time::getMillisecondCounterHiRes() * 0.001;
     setInterceptsMouseClicks (true, false);
 }
 
@@ -16,11 +14,10 @@ float LevelMeter::dbToY (float db, juce::Rectangle<float> bar) const
     return bar.getBottom() - shaped * bar.getHeight();
 }
 
-void LevelMeter::timerCallback()
+void LevelMeter::frame (double frameDt)
 {
-    const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
-    const float dt = (float) juce::jlimit (0.0, 0.2, now - lastTime);
-    lastTime = now;
+    const float dt = (float) frameDt;
+    now += frameDt;
 
     auto r = source.read();
     bool changed = false;
@@ -127,10 +124,9 @@ void LevelMeter::paint (juce::Graphics& g)
 //==============================================================================
 GainChangeMeter::GainChangeMeter (std::function<float()> fn, float r) : getter (std::move (fn)), range (r), colour (Theme::get().accent)
 {
-    startTimerHz (30);
 }
 
-void GainChangeMeter::timerCallback()
+void GainChangeMeter::frame()
 {
     const float v = getter ? getter() : 0.0f;
     if (std::abs (v - value) > 0.05f) { value = v; repaint(); }

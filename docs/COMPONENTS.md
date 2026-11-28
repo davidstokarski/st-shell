@@ -11,7 +11,8 @@ Everything here is in namespace `st` unless noted. Paths are relative to `module
 | `TextPrompt::show (parent, title, text, ok, callback)` | In-window text prompt (preset save); avoids native dialogs in hosts. |
 | `Popover` | Base for floating panels: shadow margin, title + subtitle, × and Esc, click-through margin. Override `layoutContent (contentBounds)` / `paintContent (g)`; use `getHeaderBounds()` for header controls; size with `Popover::totalSize (w, h)`. |
 | `Animated` | `setTarget`, `tick (dt, speed)` → true while moving. Use for every visual transition. |
-| `FrameClock (component, onFrame)` | vblank-driven callback, max 60 fps, timer fallback offscreen. One per editor is usually enough. |
+| `FrameClock (component, onFrame)` | vblank-driven callback at the display's refresh rate (≤60 fps when the shared "Cap Frame Rate" setting, `userSettings::isFrameRateCapped`, is on), timer fallback offscreen; `getDisplayRate()`. One per editor is usually enough. |
+| `UndoHistoryList` | The header's undo history: rest the pointer on Undo / Redo (or `HeaderBar::showUndoHistory()`) for the recent edits, newest first, undone ones dimmed; click a row to jump there. Rows are transaction names: `ParameterControl` names every edit "Parameter  value"; name your own with `beginNewTransaction (name)` / `setCurrentTransactionName`. |
 | `showMenu (menu, target, onResult, atMouse)` | Native dark NSMenu (JUCE fallback elsewhere). Item `action`s fire; result = item ID. |
 
 ## Parameter controls — `ui/Knob.h`, `ui/Controls.h` (all derive from `ParameterControl`: gestures, undo, host menu)
@@ -34,7 +35,9 @@ Everything here is in namespace `st` unless noted. Paths are relative to `module
 ## Meters & analysis — `ui/Meters.h`, `core/Metering.h`
 
 `MeterSource` (audio → UI peak/RMS), `LevelMeter`, `GainChangeMeter`, `AnalyzerSource` + `SpectrumAnalyzer`
-(Blackman-Harris FFT, fractional-octave smoothing, `hopSize` for smooth motion, `createPath`).
+(Blackman-Harris FFT, fractional-octave smoothing, `createPath`). Call `update (dt)` from the `FrameClock`: with the default
+`hopSize = 0` it computes a fresh FFT on every display frame (in step with the monitor) and its rise smoothing is time
+based; a larger `hopSize` is the minimum new samples per FFT, for cheap compact views (multiview modules).
 `LevelHistory` (`core/LevelHistory.h`): lock-free level / gain-change history for scrolling dynamics displays (one
 frame every ~4 ms: in / out / detector peaks and the signed gain change, negative = reduction, positive = upward),
 written by the audio thread, read without consuming by any number of views. `ui/LevelHistoryView.h`: `HistoryReader`
@@ -54,7 +57,7 @@ depth drag, context menu), `ModulationTrails` (glow overlay), `ModulationPanel` 
 
 `knobDisc`, `pillHandle`, `greyButton`, `connectorDot`, `lightTrail`, `fadedLine`, `tray`, `glass`, `panel`, `well`,
 `softShadow`, `glowStroke`, `caption`. Icons: `st::icons::draw (g, Icon::..., area, colour)` — includes `pencil`,
-`headphones`, `scissors`, `stereoLink`, `bars`, `chevronsRight`, `chevronsLeft`, `sidechain`. Theme token `curve`: the main response curve of
+`headphones`, `scissors`, `stereoLink`, `bars`, `chevronsRight`, `chevronsLeft`, `sidechain`, `lock`, `unlock`. Theme token `curve`: the main response curve of
 filter / EQ displays.
 
 ## DSP — `dsp/` (`st::dsp::`)
@@ -63,7 +66,7 @@ filter / EQ displays.
 |---|---|
 | `Crossover` | Phase-coherent LR crossover, 1–8 bands, 12/24/48 dB/oct, smoothed frequencies, `getBandMagnitude` for UI. |
 | `UpDownCompressor` | Upward + downward compressor/expander (`depth` −1..1), static curve for UI, meters. |
-| `Oversampler` | 1–16x FIR, all factors prepared up front; switch on the message thread. |
+| `Oversampler` | 1–16x FIR (`prepare (..., maxFactorIndex = 6)` for up to 64x, ST Master), all factors prepared up front; switch on the message thread. |
 | `eq::designAnalog / designDigital`, `EqBandSpec`, `EqShape` | Parametric EQ bands (bell, shelves, cuts, notch, band pass, tilt shelf, flat tilt, all pass; 6–120 dB/oct, resonance). One analog prototype gives the exact analog response (drawing, FIR design) and analog-matched biquads (impulse-invariant poles, least-squares / matched-z numerators): no cramping near Nyquist. Pure low / high cut sections are pre-warped bilinear instead (`CutStyle::bilinear`, the default): exact corner, monotonic and wiggle-free at any cutoff up to and past Nyquist, the corner eased past 0.8 π so sweeping never jumps; they fall away faster than the analog close to Nyquist. `CutStyle::matched` keeps every section analog-matched (for a correction FIR that needs a bounded analog / digital ratio). `EqCascade::setDesign` glides across section-count changes. `hasGain / hasSlope / hasQ`. |
 | `EqCascade` | Up to 12 biquads (TDF-II, double) for one band, per-sample coefficient glide when the design changes (automation, dynamic EQ). |
 | `StftProcessor` | Streaming STFT (sqrt-Hann WOLA, hop N/4, latency N) with a per-frame callback that may modify the main channels' spectra; analysis-only side channels for detectors. Spectral dynamics, de-noising, spectral gates. |

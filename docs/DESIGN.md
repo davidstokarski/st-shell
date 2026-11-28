@@ -73,7 +73,9 @@ Values and names: `fonts::medium` 11–14 px. Never use the system font directly
 
 ## 6. Motion
 
-- Everything eases with `st::Animated` (exponential approach) on a `st::FrameClock` (vblank, max 60 fps).
+- Everything eases with `st::Animated` (exponential approach) on a `st::FrameClock`: in step with the monitor (60 / 120 /
+  144 Hz), analysers compute a fresh FFT on every frame, meters move on every frame. Settings > "Cap Frame Rate (60 fps)"
+  (shared by every ST plug-in) trades that for power on high-refresh screens; the speed of motion is the same either way.
 - Panels glide to their target; replaced panels cross-fade; popovers fade + slide up ~10 px.
 - No motion without purpose; nothing bounces.
 

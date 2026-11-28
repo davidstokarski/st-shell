@@ -36,7 +36,8 @@ After changing the shell, rebuild and test both plugins.
 4. **Native menus**: always open menus with `st::showMenu (...)` (real NSMenu on macOS), never `PopupMenu::showMenuAsync`.
 5. **Real-time safety**: no allocation, locks, logging or file I/O on the audio thread. Anything that must
    reallocate (e.g. oversampling factor changes) happens on the message thread inside `suspendProcessing`.
-6. **UI performance**: animate with `st::FrameClock` (capped at 60 fps), repaint only when something changed,
+6. **UI performance**: animate with `st::FrameClock` (in step with the display: 60 / 120 / 144 Hz; the shared "Cap Frame Rate"
+   setting holds it to ~60 fps), advance everything by the frame's `dt`, repaint only when something changed,
    cache static components with `setBufferedToImage (true)`. A plugin UI must never make the host stutter.
 7. **Verify visually**: render the editor to PNG with the snapshot tool and look at it before saying a UI change is done.
    Check every popover/state you touched (see QUALITY.md).

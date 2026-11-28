@@ -39,4 +39,29 @@ void setBool (const juce::String& key, bool value)
     f.saveIfNeeded();
 }
 
+static std::atomic<int>& frameCapCache() { static std::atomic<int> v { -1 }; return v; }
+
+bool isFrameRateCapped() noexcept
+{
+    auto& c = frameCapCache();
+    int v = c.load (std::memory_order_relaxed);
+    if (v < 0)
+    {
+        v = getBool (capFrameRate, false) ? 1 : 0;
+        c.store (v, std::memory_order_relaxed);
+    }
+    return v == 1;
+}
+
+void setFrameRateCapped (bool b)
+{
+    setBool (capFrameRate, b);
+    frameCapCache().store (b ? 1 : 0, std::memory_order_relaxed);
+}
+
+void refreshCache()
+{
+    frameCapCache().store (getBool (capFrameRate, false) ? 1 : 0, std::memory_order_relaxed);
+}
+
 } // namespace st::userSettings

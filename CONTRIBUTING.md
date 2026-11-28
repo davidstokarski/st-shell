@@ -3,7 +3,8 @@
 Thanks for your interest! These notes apply to **ST Shell** and every plugin built on it
 ([ST Sat](https://github.com/davidstokarski/st-sat), [ST EQ](https://github.com/davidstokarski/st-eq),
 [ST DC](https://github.com/davidstokarski/st-dc), [ST Comp](https://github.com/davidstokarski/st-comp),
-[ST Split](https://github.com/davidstokarski/st-split), [ST Sample](https://github.com/davidstokarski/st-sample)).
+[ST Split](https://github.com/davidstokarski/st-split), [ST Sample](https://github.com/davidstokarski/st-sample),
+[ST Master](https://github.com/davidstokarski/st-master)).
 
 ## How changes land
 
